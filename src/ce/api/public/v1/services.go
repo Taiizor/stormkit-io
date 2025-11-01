@@ -1,0 +1,53 @@
+package publicapiv1
+
+import (
+	"github.com/stormkit-io/stormkit-io/src/ce/api/app"
+	"github.com/stormkit-io/stormkit-io/src/ce/api/app/buildconf/domainhandlers"
+	"github.com/stormkit-io/stormkit-io/src/ce/api/app/buildconf/snippetshandlers"
+	"github.com/stormkit-io/stormkit-io/src/ce/api/app/mailer/mailerhandlers"
+	"github.com/stormkit-io/stormkit-io/src/ce/api/user"
+	"github.com/stormkit-io/stormkit-io/src/lib/shttp"
+)
+
+// Services sets the handlers for this service.
+func Services(r *shttp.Router) *shttp.Service {
+	s := r.NewService()
+
+	s.NewEndpoint("/v1/env").
+		Handler(shttp.MethodPost, "", app.WithAPIKey(handlerEnvAdd)).
+		Handler(shttp.MethodDelete, "", app.WithAPIKey(handlerEnvDel, &app.Opts{Env: true})).
+		Handler(shttp.MethodGet, "/pull", app.WithAPIKey(handlerEnvPull, &app.Opts{Env: true}))
+
+	s.NewEndpoint("/v1/snippets").
+		Handler(shttp.MethodGet, "", app.WithAPIKey(snippetshandlers.HandlerSnippetsGet, &app.Opts{Env: true})).
+		Handler(shttp.MethodPost, "", app.WithAPIKey(snippetshandlers.HandlerSnippetsAdd, &app.Opts{Env: true})).
+		Handler(shttp.MethodPut, "", app.WithAPIKey(snippetshandlers.HandlerSnippetsPut, &app.Opts{Env: true})).
+		Handler(shttp.MethodDelete, "", app.WithAPIKey(snippetshandlers.HandlerSnippetsDelete, &app.Opts{Env: true}))
+
+	s.NewEndpoint("/v1/redirects").
+		Handler(shttp.MethodGet, "", app.WithAPIKey(handlerRedirectsGet, &app.Opts{Env: true})).
+		Handler(shttp.MethodPost, "", app.WithAPIKey(handlerRedirectsSet, &app.Opts{Env: true}))
+
+	s.NewEndpoint("/v1/domains").
+		Handler(shttp.MethodGet, "", app.WithAPIKey(domainhandlers.HandlerDomainsList, &app.Opts{Env: true})).
+		Handler(shttp.MethodPost, "", app.WithAPIKey(domainhandlers.HandlerDomainAdd, &app.Opts{Env: true})).
+		Handler(shttp.MethodDelete, "", app.WithAPIKey(domainhandlers.HandlerDomainDelete, &app.Opts{Env: true}))
+
+	s.NewEndpoint("/v1/domains").
+		Middleware(user.WithEE).
+		Handler(shttp.MethodPut, "/cert", app.WithAPIKey(domainhandlers.HandlerCertPut, &app.Opts{Env: true})).
+		Handler(shttp.MethodDelete, "/cert", app.WithAPIKey(domainhandlers.HandlerCertDelete, &app.Opts{Env: true}))
+
+	s.NewEndpoint("/v1/app").
+		Handler(shttp.MethodGet, "/config", app.WithAPIKey(handlerAppConf, &app.Opts{App: true}))
+
+	s.NewEndpoint("/v1/mail").
+		Handler(shttp.MethodPost, "", app.WithAPIKey(mailerhandlers.HandlerMail, &app.Opts{Env: true}))
+
+	s.NewEndpoint("/v1/license").
+		// Temporary solution until we migrate previous licenses
+		Handler(shttp.MethodGet, "", func(rc *shttp.RequestContext) *shttp.Response { return shttp.OK() }).
+		Handler(shttp.MethodGet, "/check", handlerLicenseCheck)
+
+	return s
+}

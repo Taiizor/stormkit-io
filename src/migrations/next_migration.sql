@@ -1,0 +1,1 @@
+-- These migrations are trivial changes that we can migrate next time we change the schema

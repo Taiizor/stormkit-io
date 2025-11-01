@@ -1,0 +1,43 @@
+package deployhandlers
+
+import (
+	"github.com/stormkit-io/stormkit-io/src/ce/api/app"
+	"github.com/stormkit-io/stormkit-io/src/ce/api/user"
+	"github.com/stormkit-io/stormkit-io/src/lib/shttp"
+)
+
+// Services sets the handlers for this service.
+func Services(r *shttp.Router) *shttp.Service {
+	s := r.NewService()
+
+	s.NewEndpoint("/my").
+		Handler(shttp.MethodGet, "/deployments", user.WithAuth(handlerMyDeployments))
+
+	s.NewEndpoint("/app/deploy").
+		Handler(shttp.MethodPost, "", app.WithApp(handlerDeployStart)).
+		Handler(shttp.MethodDelete, "", app.WithApp(handlerDeployDelete)).
+		Handler(shttp.MethodPost, "/restart", app.WithApp(handlerDeployRestart)).
+		Handler(shttp.MethodPost, "/callback", handlerDeployCallback).
+		Handler(shttp.MethodPost, "/stop", shttp.WithRateLimit(app.WithApp(handlerDeployStop), nil))
+
+	s.NewEndpoint("/app/{did:[0-9]+}/deploy").
+		Handler(shttp.MethodGet, "/{deploymentId:[0-9]+}", app.WithApp(handlerDeployGet))
+
+	s.NewEndpoint("/app/{did:[0-9]+}/manifest").
+		Handler(shttp.MethodGet, "/{deploymentId:[0-9]+}", shttp.WithRateLimit(
+			app.WithApp(handlerDeployManifestGet),
+			nil,
+		))
+
+	s.NewEndpoint("/app/deployments").
+		Handler(shttp.MethodPost, "", shttp.WithRateLimit(
+			app.WithApp(handlerDeployments),
+			nil,
+		)).
+		Handler(shttp.MethodPost, "/publish", shttp.WithRateLimit(
+			app.WithApp(handlerPublish),
+			nil,
+		))
+
+	return s
+}
