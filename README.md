@@ -53,6 +53,7 @@ git clone https://github.com/stormkit-io/stormkit-io.git
 cd stormkit-io
 
 # Trust the dependencies specified in `mise.toml` and install them
+# NOTE: you may need to install mise first: https://mise.jdx.dev/getting-started.html
 mise trust && mise install
 
 # Start all services (includes database setup and migrations)
