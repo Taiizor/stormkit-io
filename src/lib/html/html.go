@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"html/template"
 
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/utils"
 )
 
@@ -178,7 +179,7 @@ func Render(args RenderArgs) ([]byte, error) {
 	}
 
 	if err := mainTmpl.Execute(&buf, data); err != nil {
-		return []byte("Error while parsing template"), err
+		return []byte("Error while parsing template"), errors.Wrap(err, errors.ErrorTypeInternal, "failed to execute HTML template").WithContext("page_title", args.PageTitle)
 	}
 
 	return buf.Bytes(), nil

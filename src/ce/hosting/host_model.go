@@ -9,6 +9,7 @@ import (
 
 	"github.com/stormkit-io/stormkit-io/src/ce/api/admin"
 	"github.com/stormkit-io/stormkit-io/src/ce/api/app/appconf"
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/shttp"
 	"github.com/stormkit-io/stormkit-io/src/lib/slog"
 	"github.com/stormkit-io/stormkit-io/src/lib/utils"
@@ -84,6 +85,7 @@ func FetchAppConf(hostName string) ([]*appconf.Config, error) {
 	configs, err := appconf.FetchConfig(hostName)
 
 	if err != nil {
+		err = errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to fetch config for hostname: %s", hostName)
 		slog.Errorf("Error fetching config %v", err)
 	}
 
@@ -104,6 +106,7 @@ func FetchAppConf(hostName string) ([]*appconf.Config, error) {
 			)
 
 		if err != nil {
+			err = errors.Wrapf(err, errors.ErrorTypeInternal, "failed to configure custom certificate for hostname: %s", hostName)
 			slog.Errorf("cannot configure custom certificate: %s", err.Error())
 		} else {
 			slog.Infof("custom certificate cache key: %s", hash)
@@ -120,7 +123,7 @@ func (h *Host) RequestConfig() error {
 	confs, err := FetchAppConf(h.Name)
 
 	if err != nil {
-		return err
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to request config for host: %s", h.Name)
 	}
 
 	if len(confs) == 0 {

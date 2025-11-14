@@ -5,6 +5,7 @@ import (
 
 	"github.com/hibiken/asynq"
 	"github.com/stormkit-io/stormkit-io/src/ce/api/app/deployservice"
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/slog"
 	"github.com/stormkit-io/stormkit-io/src/lib/utils"
 )
@@ -15,6 +16,7 @@ func HandleDeploymentStart(ctx context.Context, t *asynq.Task) error {
 	message, err := deployservice.FromEncrypted(string(payload))
 
 	if err != nil {
+		err = errors.Wrapf(err, errors.ErrorTypeInternal, "failed to decrypt deployment message")
 		slog.Errorf("cannot retrieve deployment message: %v", err)
 		return err
 	}
@@ -30,6 +32,7 @@ func HandleDeploymentStart(ctx context.Context, t *asynq.Task) error {
 			return nil
 		}
 
+		err = errors.Wrapf(err, errors.ErrorTypeInternal, "failed to send payload to deploy service for deployment_id=%s", message.Build.DeploymentID)
 		slog.Errorf("deploy service error: %v", err)
 		return err
 	}

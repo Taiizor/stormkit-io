@@ -3,6 +3,7 @@ package discord
 import (
 	"net/http"
 
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/shttp"
 	"github.com/stormkit-io/stormkit-io/src/lib/slog"
 )
@@ -42,7 +43,8 @@ func Notify(channel string, payload Payload) {
 		Do()
 
 	if err != nil {
-		slog.Errorf("failed while posting a request to Discord: %v", err)
+		wrappedErr := errors.Wrap(err, errors.ErrorTypeExternal, "failed to post message to Discord").WithContext("channel", channel)
+		slog.Errorf("%v", wrappedErr)
 		return
 	}
 

@@ -7,6 +7,7 @@ import (
 
 	"github.com/hibiken/asynq"
 	"github.com/stormkit-io/stormkit-io/src/lib/config"
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 )
 
 var (
@@ -100,7 +101,7 @@ func Enqueue(ctx context.Context, taskName string, message any, opts *EnqueueOpt
 	}
 
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, errors.ErrorTypeInternal, "failed to marshal task payload").WithContext("task_name", taskName)
 	}
 
 	if opts == nil {

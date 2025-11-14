@@ -3,13 +3,14 @@ package jobs
 import (
 	"context"
 	"encoding/json"
-	"errors"
+	stderrors "errors"
 
 	"github.com/redis/go-redis/v9"
 	"github.com/stormkit-io/stormkit-io/src/ce/api/applog"
 	"github.com/stormkit-io/stormkit-io/src/ce/api/user"
 	"github.com/stormkit-io/stormkit-io/src/ee/api/analytics"
 	"github.com/stormkit-io/stormkit-io/src/lib/config"
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/integrations"
 	"github.com/stormkit-io/stormkit-io/src/lib/rediscache"
 	"github.com/stormkit-io/stormkit-io/src/lib/slog"
@@ -53,14 +54,15 @@ func IngestHandlerForward(ctx context.Context) error {
 		msg, err := client.LPop(ctx, HostingQueueName).Result()
 
 		if rediscache.IsConnectionError(err) {
-			return err
+			return errors.Wrapf(err, errors.ErrorTypeExternal, "redis connection error while ingesting hosting records")
 		}
 
-		if err != nil && errors.Is(err, redis.Nil) {
+		if err != nil && stderrors.Is(err, redis.Nil) {
 			break
 		}
 
 		if err != nil {
+			err = errors.Wrapf(err, errors.ErrorTypeExternal, "failed to pop hosting record from redis queue")
 			slog.Errorf("error while popping from redis: %v", err)
 			break
 		}
@@ -68,6 +70,7 @@ func IngestHandlerForward(ctx context.Context) error {
 		record := HostingRecord{}
 
 		if err := json.Unmarshal([]byte(msg), &record); err != nil {
+			err = errors.Wrapf(err, errors.ErrorTypeInternal, "failed to unmarshal hosting record from redis")
 			slog.Errorf("cannot unmarshal log: %v", err)
 			break
 		}
@@ -108,12 +111,14 @@ func IngestHandlerForward(ctx context.Context) error {
 
 	if len(analyticsRecords) > 0 {
 		if err := analytics.NewStore().InsertRecords(analyticsContext, analyticsRecords); err != nil {
+			err = errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to batch insert %d analytics records", len(analyticsRecords))
 			slog.Errorf("error while batch inserting analytic records: %v", err)
 		}
 	}
 
 	if len(logRecords) > 0 {
 		if err := applog.NewStore().InsertLogs(ingestContext, logRecords); err != nil {
+			err = errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to batch insert %d log records", len(logRecords))
 			slog.Errorf("error while batch inserting log records: %v", err)
 		}
 	}
@@ -130,6 +135,7 @@ func IngestHandlerForward(ctx context.Context) error {
 
 	if len(userStats) > 0 && config.IsStormkitCloud() {
 		if err := user.NewStore().UpdateUsageMetrics(ingestContext, userStats); err != nil {
+			err = errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to update usage metrics for %d users", len(userStats))
 			slog.Errorf("error while updating user usage metrics: %v", err)
 		}
 	}

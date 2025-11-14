@@ -11,6 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
 	"github.com/aws/aws-sdk-go/service/sts/stsiface"
 	"github.com/stormkit-io/stormkit-io/src/lib/config"
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 )
 
 var _AWS *AWS
@@ -58,7 +59,7 @@ func configure(region string, cfgs ...*aws.Config) *AWS {
 	a.Session, err = createSession(region, a.Config)
 
 	if err != nil {
-		panic(err)
+		panic(errors.Wrap(err, errors.ErrorTypeExternal, "failed to create AWS session").WithContext("region", region))
 	}
 
 	a.Lambda = newLambda(a.Session, cfgs...)

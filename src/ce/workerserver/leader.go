@@ -2,12 +2,13 @@ package jobs
 
 import (
 	"context"
-	"errors"
+	stderrors "errors"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/rediscache"
 	"github.com/stormkit-io/stormkit-io/src/lib/slog"
 )
@@ -117,6 +118,7 @@ func (l *Node) Stop(ctx context.Context) {
 			_, err := l.redis.Do(ctx, "DEL", l.key).Result()
 
 			if err != nil {
+				err = errors.Wrapf(err, errors.ErrorTypeExternal, "failed to revoke leader key for node: %s", l.id)
 				slog.Errorf("error while revoking key: %s", err.Error())
 			}
 
@@ -136,12 +138,14 @@ func (l *Node) elect(ctx context.Context) {
 			reply, err := l.redis.Do(ctx, "SET", l.key, l.id, "PX", int(l.options.TTL/time.Millisecond), "NX").Result()
 
 			if rediscache.IsConnectionError(err) {
+				err = errors.Wrapf(err, errors.ErrorTypeExternal, "redis connection error during leader election for node: %s", l.id)
 				slog.Errorf("redis connection error: %v", err)
 				time.Sleep(10 * time.Second)
 				continue
 			}
 
-			if err != nil && !errors.Is(err, redis.Nil) {
+			if err != nil && !stderrors.Is(err, redis.Nil) {
+				err = errors.Wrapf(err, errors.ErrorTypeExternal, "failed to set leader key for node: %s", l.id)
 				slog.Errorf("failed to set leader key: %v", err)
 				time.Sleep(l.options.Wait)
 				continue
@@ -176,6 +180,7 @@ func (l *Node) renew(ctx context.Context) {
 				if isLeader {
 					_, err := l.redis.Do(ctx, "PEXPIRE", l.key, int(l.options.TTL/time.Millisecond)).Result()
 					if err != nil {
+						err = errors.Wrapf(err, errors.ErrorTypeExternal, "failed to renew leader key for node: %s", l.id)
 						slog.Errorf("failed to renew leader key: %v", err)
 					}
 				} else {
@@ -195,6 +200,7 @@ func (l *Node) isLeader(ctx context.Context, callback func(bool)) {
 	reply, err := l.redis.Do(ctx, "GET", l.key).Result()
 
 	if err != nil && err != redis.Nil {
+		err = errors.Wrapf(err, errors.ErrorTypeExternal, "failed to get leader key for node: %s", l.id)
 		slog.Errorf("failed to get leader key: %v", err)
 		callback(false)
 		return

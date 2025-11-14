@@ -3,6 +3,7 @@ package jobs
 import (
 	"context"
 
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/slog"
 )
 
@@ -16,6 +17,7 @@ func RemoveStaleEnvironments(ctx context.Context) error {
 	_, err := store.Exec(ctx, stmt.markDeploymentsSoftDeleted)
 
 	if err != nil {
+		err = errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to mark deployments of soft deleted environments as deleted")
 		slog.Errorf("error while marking deployments soft deleted %v", err)
 		return err
 	}

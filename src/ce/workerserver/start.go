@@ -6,6 +6,7 @@ import (
 	"github.com/hibiken/asynq"
 	"github.com/stormkit-io/stormkit-io/src/ce/api/admin"
 	"github.com/stormkit-io/stormkit-io/src/lib/config"
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/rediscache"
 	"github.com/stormkit-io/stormkit-io/src/lib/slog"
 	"github.com/stormkit-io/stormkit-io/src/lib/tasks"
@@ -16,6 +17,7 @@ func scheduler() {
 	scheduler, err := NewScheduler()
 
 	if err != nil {
+		err = errors.Wrapf(err, errors.ErrorTypeInternal, "failed to create scheduler instance")
 		slog.Errorf("cannot start the scheduler: %s", err.Error())
 	}
 
@@ -69,6 +71,7 @@ func Server(serverOpts ...ServerOpts) (*asynq.Server, *asynq.ServeMux) {
 
 	for event, handler := range handlers {
 		if err := service.SubscribeAsync(event, handler); err != nil {
+			err = errors.Wrapf(err, errors.ErrorTypeInternal, "failed to register event handler for: %s", event)
 			slog.Errorf("failed to register event %s: %v", event, err)
 		}
 	}

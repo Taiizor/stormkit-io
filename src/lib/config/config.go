@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/stormkit-io/stormkit-io/src/lib/database"
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/slog"
 	"github.com/stormkit-io/stormkit-io/src/lib/utils"
 	"github.com/stripe/stripe-go"
@@ -447,7 +448,8 @@ func Secrets() map[string]string {
 		decoded, err := utils.DecodeString(envValue[7:])
 
 		if err != nil {
-			slog.Errorf("error while decoding env variable=%s, err=%v", envName, err)
+			wrappedErr := errors.Wrap(err, errors.ErrorTypeInternal, "failed to decode environment variable").WithContext("variable", envName)
+			slog.Errorf("%v", wrappedErr)
 			continue
 		}
 
@@ -456,7 +458,8 @@ func Secrets() map[string]string {
 		if err == nil && decrypted != nil {
 			secretMap[envName] = string(decrypted)
 		} else if err != nil {
-			slog.Errorf("error while decrypting env variable=%s,  err=%v", envName, err)
+			wrappedErr := errors.Wrap(err, errors.ErrorTypeInternal, "failed to decrypt environment variable").WithContext("variable", envName)
+			slog.Errorf("%v", wrappedErr)
 		}
 	}
 

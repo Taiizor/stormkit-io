@@ -1,7 +1,6 @@
 package saws
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 
@@ -10,6 +9,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/lambda"
 	"github.com/aws/aws-sdk-go/service/lambda/lambdaiface"
 	"github.com/stormkit-io/stormkit-io/src/lib/config"
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/types"
 	"github.com/stormkit-io/stormkit-io/src/lib/utils"
 )
@@ -37,7 +37,7 @@ func (a *AWS) CreateFunctionAlias(input *lambda.CreateAliasInput) (*lambda.Alias
 // DeleteFunctionVersion deletes a specific function version.
 func (a *AWS) DeleteFunctionVersion(fnName string, version string) (*lambda.DeleteFunctionOutput, error) {
 	if strings.TrimSpace(version) == "" {
-		return nil, errors.New("empty function version")
+		return nil, errors.New(errors.ErrorTypeValidation, "empty function version").WithContext("function_name", fnName)
 	}
 
 	return a.Lambda.DeleteFunction(&lambda.DeleteFunctionInput{
@@ -56,7 +56,13 @@ func (a *AWS) UpdateFunctionAlias(functionName, alias, version, description stri
 	}
 
 	_, err := a.Lambda.UpdateAlias(input)
-	return err
+	if err != nil {
+		return errors.Wrap(err, errors.ErrorTypeExternal, "failed to update Lambda function alias").
+			WithContext("function_name", functionName).
+			WithContext("alias", alias).
+			WithContext("version", version)
+	}
+	return nil
 }
 
 // LastFunctionVersion returns the last version of the function.
@@ -69,7 +75,7 @@ func (a *AWS) LastFunctionVersion(fn string) (*string, error) {
 	output, err := a.Lambda.ListVersionsByFunction(input)
 
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, errors.ErrorTypeExternal, "failed to list Lambda function versions").WithContext("function_name", fn)
 	}
 
 	if len(output.Versions) != 2 {
