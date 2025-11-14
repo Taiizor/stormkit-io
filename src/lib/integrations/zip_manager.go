@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/slog"
 	"go.uber.org/zap"
 )
@@ -98,7 +99,11 @@ func (zm *ZipManager) GetFile(args GetFileArgs) (*GetFileResult, error) {
 		zm.cache[did].Location, err = zm.download(did, bucket, prefix)
 
 		if err != nil {
-			return nil, err
+			return nil, errors.Wrap(err, errors.ErrorTypeExternal, "failed to download zip file", map[string]interface{}{
+				"deployment_id": did,
+				"bucket":        bucket,
+				"prefix":        prefix,
+			})
 		}
 	}
 
@@ -108,13 +113,21 @@ func (zm *ZipManager) GetFile(args GetFileArgs) (*GetFileResult, error) {
 	data, err := os.ReadFile(filePath)
 
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, errors.ErrorTypeInternal, "failed to read file from zip", map[string]interface{}{
+			"file_path":     filePath,
+			"deployment_id": did,
+			"file_name":     args.FileName,
+		})
 	}
 
 	stat, err := os.Stat(filePath)
 
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, errors.ErrorTypeInternal, "failed to stat file from zip", map[string]interface{}{
+			"file_path":     filePath,
+			"deployment_id": did,
+			"file_name":     args.FileName,
+		})
 	}
 
 	return &GetFileResult{

@@ -7,7 +7,6 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
-	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -15,6 +14,7 @@ import (
 	"github.com/goccy/go-yaml"
 	"github.com/google/uuid"
 	"github.com/hetznercloud/hcloud-go/v2/hcloud"
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/types"
 	"golang.org/x/crypto/ssh"
 )
@@ -56,7 +56,8 @@ func (h *hclient) createPlacementGroup(ctx context.Context, name string) (int64,
 	result, _, err := h.client.PlacementGroup.Get(ctx, pgName)
 
 	if err != nil {
-		return 0, err
+		return 0, errors.Wrap(err, errors.ErrorTypeExternal, "failed to get placement group").
+			WithContext("placement_group", pgName)
 	}
 
 	if result != nil && result.ID != 0 {
@@ -69,11 +70,13 @@ func (h *hclient) createPlacementGroup(ctx context.Context, name string) (int64,
 	})
 
 	if err != nil {
-		return 0, err
+		return 0, errors.Wrap(err, errors.ErrorTypeExternal, "failed to create placement group").
+			WithContext("placement_group", pgName)
 	}
 
 	if insertResult.PlacementGroup == nil {
-		return 0, errors.New("placement group is empty")
+		return 0, errors.New(errors.ErrorTypeExternal, "placement group is empty").
+			WithContext("placement_group", pgName)
 	}
 
 	return insertResult.PlacementGroup.ID, nil
@@ -93,14 +96,17 @@ func (h *hclient) createSSHKey(ctx context.Context, clientID types.ID) (*SSHKey,
 	result := &SSHKey{}
 
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, errors.ErrorTypeExternal, "failed to get SSH key").
+			WithContext("key_name", keyName).
+			WithContext("client_id", clientID.String())
 	}
 
 	if sshKey == nil {
 		privateKey, publicKey, err := generateSSHKeyInMemory(2048)
 
 		if err != nil {
-			return nil, err
+			return nil, errors.Wrap(err, errors.ErrorTypeInternal, "failed to generate SSH key").
+				WithContext("client_id", clientID.String())
 		}
 
 		sshKey, _, err = h.client.SSHKey.Create(ctx, hcloud.SSHKeyCreateOpts{
@@ -112,7 +118,9 @@ func (h *hclient) createSSHKey(ctx context.Context, clientID types.ID) (*SSHKey,
 		})
 
 		if err != nil {
-			return nil, err
+			return nil, errors.Wrap(err, errors.ErrorTypeExternal, "failed to create SSH key").
+				WithContext("key_name", keyName).
+				WithContext("client_id", clientID.String())
 		}
 
 		if privateKey != "" {
@@ -121,7 +129,9 @@ func (h *hclient) createSSHKey(ctx context.Context, clientID types.ID) (*SSHKey,
 	}
 
 	if sshKey == nil {
-		return nil, errors.New("ssh key not generated")
+		return nil, errors.New(errors.ErrorTypeExternal, "ssh key not generated").
+			WithContext("key_name", keyName).
+			WithContext("client_id", clientID.String())
 	}
 
 	result.KeyID = sshKey.ID
@@ -135,13 +145,15 @@ func (h *hclient) CreateServer(ctx context.Context, opts CreateServerOpts) (*Ser
 	keyResult, err := h.createSSHKey(ctx, opts.UserID)
 
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, errors.ErrorTypeExternal, "failed to create SSH key for server").
+			WithContext("user_id", opts.UserID.String())
 	}
 
 	pgID, err := h.createPlacementGroup(ctx, opts.UserID.String())
 
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, errors.ErrorTypeExternal, "failed to create placement group for server").
+			WithContext("user_id", opts.UserID.String())
 	}
 
 	userData, err := yaml.Marshal(map[string]any{
@@ -161,7 +173,8 @@ func (h *hclient) CreateServer(ctx context.Context, opts CreateServerOpts) (*Ser
 	})
 
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, errors.ErrorTypeInternal, "failed to marshal user data").
+			WithContext("user_id", opts.UserID.String())
 	}
 
 	result, response, err := h.client.Server.Create(ctx, hcloud.ServerCreateOpts{
@@ -189,11 +202,13 @@ func (h *hclient) CreateServer(ctx context.Context, opts CreateServerOpts) (*Ser
 	})
 
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, errors.ErrorTypeExternal, "failed to create Hetzner server").
+			WithContext("user_id", opts.UserID.String())
 	}
 
 	if response == nil {
-		return nil, errors.New("hcloud server create response is nil")
+		return nil, errors.New(errors.ErrorTypeExternal, "hcloud server create response is nil").
+			WithContext("user_id", opts.UserID.String())
 	}
 
 	output := &ServerOutput{
@@ -218,7 +233,8 @@ func generateSSHKeyInMemory(bits int) (privateKey string, publicKey string, err 
 	// Generate private key
 	rsaKey, err := rsa.GenerateKey(rand.Reader, bits)
 	if err != nil {
-		return "", "", err
+		return "", "", errors.Wrap(err, errors.ErrorTypeInternal, "failed to generate RSA key").
+			WithContext("bits", bits)
 	}
 
 	// Convert private key to PEM format
@@ -230,13 +246,13 @@ func generateSSHKeyInMemory(bits int) (privateKey string, publicKey string, err 
 	}
 
 	if err := pem.Encode(&privKeyBuf, privateKeyPEM); err != nil {
-		return "", "", err
+		return "", "", errors.Wrap(err, errors.ErrorTypeInternal, "failed to encode private key to PEM")
 	}
 
 	// Generate public key
 	publicRsaKey, err := ssh.NewPublicKey(&rsaKey.PublicKey)
 	if err != nil {
-		return "", "", err
+		return "", "", errors.Wrap(err, errors.ErrorTypeInternal, "failed to generate SSH public key")
 	}
 
 	return privKeyBuf.String(), string(ssh.MarshalAuthorizedKey(publicRsaKey)), nil

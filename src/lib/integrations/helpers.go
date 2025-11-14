@@ -12,6 +12,7 @@ import (
 	"sync"
 
 	"github.com/stormkit-io/stormkit-io/src/lib/config"
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/shttp"
 	"github.com/stormkit-io/stormkit-io/src/lib/slog"
 	"github.com/stormkit-io/stormkit-io/src/lib/types"
@@ -106,7 +107,10 @@ func FilePathWalkDir(root string) []File {
 		content, err := os.ReadFile(path)
 
 		if err != nil {
-			return err
+			return errors.Wrap(err, errors.ErrorTypeInternal, "failed to read file during walk", map[string]interface{}{
+				"file_path": path,
+				"root":      root,
+			})
 		}
 
 		files = append(files, File{

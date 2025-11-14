@@ -15,6 +15,7 @@ import (
 	"github.com/alibabacloud-go/fc-20230330/v4/client"
 	"github.com/alibabacloud-go/tea/tea"
 	"github.com/stormkit-io/stormkit-io/src/lib/config"
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/slog"
 	"github.com/stormkit-io/stormkit-io/src/lib/types"
 	"github.com/stormkit-io/stormkit-io/src/lib/utils"
@@ -36,7 +37,10 @@ func (a AlibabaClient) Invoke(args InvokeArgs) (*InvokeResult, error) {
 	requestPayload, err := json.Marshal(prepareInvokeRequest(args))
 
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, errors.ErrorTypeInternal, "failed to marshal invoke request", map[string]interface{}{
+			"function_name": fnName,
+			"arn":           args.ARN,
+		})
 	}
 
 	result, err := a.client.InvokeFunction(&fnName, &client.InvokeFunctionRequest{
@@ -46,7 +50,11 @@ func (a AlibabaClient) Invoke(args InvokeArgs) (*InvokeResult, error) {
 
 	if err != nil {
 		slog.Errorf("error while invoking function=%s, err=%v", fnName, err)
-		return nil, err
+		return nil, errors.Wrap(err, errors.ErrorTypeExternal, "failed to invoke Alibaba function", map[string]interface{}{
+			"function_name":    fnName,
+			"function_version": fnVersion,
+			"arn":              args.ARN,
+		})
 	}
 
 	if result == nil {
@@ -63,13 +71,19 @@ func (a AlibabaClient) Invoke(args InvokeArgs) (*InvokeResult, error) {
 	payload, err := io.ReadAll(result.Body)
 
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, errors.ErrorTypeInternal, "failed to read function response body", map[string]interface{}{
+			"function_name": fnName,
+			"arn":           args.ARN,
+		})
 	}
 
 	response := FunctionResponse{}
 
 	if err := json.Unmarshal(payload, &response); err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, errors.ErrorTypeInternal, "failed to unmarshal function response", map[string]interface{}{
+			"function_name": fnName,
+			"arn":           args.ARN,
+		})
 	}
 
 	body := utils.GetString(response.Buffer, response.Body)
@@ -126,7 +140,11 @@ func (a AlibabaClient) uploadToFunctions(args UploadArgs) (UploadOverview, error
 	fileContent, err := os.ReadFile(args.zip)
 
 	if err != nil {
-		return overview, err
+		return overview, errors.Wrap(err, errors.ErrorTypeInternal, "failed to read zip file", map[string]interface{}{
+			"zip_path":      args.zip,
+			"app_id":        args.AppID.String(),
+			"deployment_id": args.DeploymentID.String(),
+		})
 	}
 
 	s3args := S3Args{
@@ -142,7 +160,12 @@ func (a AlibabaClient) uploadToFunctions(args UploadArgs) (UploadOverview, error
 	}
 
 	if err := a.awsClient.UploadFile(uploadFile, s3args); err != nil {
-		return overview, err
+		return overview, errors.Wrap(err, errors.ErrorTypeExternal, "failed to upload file to S3", map[string]interface{}{
+			"bucket_name":   args.BucketName,
+			"file_path":     uploadFile.RelativePath,
+			"app_id":        args.AppID.String(),
+			"deployment_id": args.DeploymentID.String(),
+		})
 	}
 
 	// Alibaba requires function names to start with a letter.
@@ -207,11 +230,17 @@ func (a AlibabaClient) uploadToFunctions(args UploadArgs) (UploadOverview, error
 		})
 
 		if err != nil {
-			return overview, err
+			return overview, errors.Wrap(err, errors.ErrorTypeExternal, "failed to publish function version", map[string]interface{}{
+				"function_name": fnArgs.FunctionName,
+				"deployment_id": args.DeploymentID.String(),
+			})
 		}
 
 		if publish == nil || publish.Body == nil || publish.Body.VersionId == nil {
-			return overview, fmt.Errorf("cannot publish function: %v", fnArgs.FunctionName)
+			return overview, errors.New(errors.ErrorTypeExternal, "cannot publish function: missing version ID", map[string]interface{}{
+				"function_name": fnArgs.FunctionName,
+				"deployment_id": args.DeploymentID.String(),
+			})
 		}
 
 		overview.BytesUploaded = fstat.Size()
