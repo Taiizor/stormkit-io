@@ -12,6 +12,7 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	"github.com/stormkit-io/stormkit-io/src/lib/config"
 	"github.com/stormkit-io/stormkit-io/src/lib/database"
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/slog"
 	"github.com/stormkit-io/stormkit-io/src/lib/utils"
 )
@@ -55,11 +56,11 @@ func Migrate(currentVersion int, db *sql.DB) (int, error) {
 		content, err := migrations.ReadFile(name)
 
 		if err != nil {
-			return latestVersion, err
+			return latestVersion, errors.Wrapf(err, errors.ErrorTypeInternal, "failed to read migration file %s", name)
 		}
 
 		if _, err := db.Exec(string(content)); err != nil {
-			return latestVersion, err
+			return latestVersion, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to execute migration %s (version=%d)", name, version)
 		}
 
 		latestVersion = version
@@ -99,11 +100,11 @@ func Seed(currentVersion int, db *sql.DB) (int, error) {
 		content, err := seed.ReadFile(name)
 
 		if err != nil {
-			return latestVersion, err
+			return latestVersion, errors.Wrapf(err, errors.ErrorTypeInternal, "failed to read seed file %s", name)
 		}
 
 		if _, err := db.Exec(string(content)); err != nil {
-			return latestVersion, err
+			return latestVersion, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to execute seed %s (version=%d)", name, version)
 		}
 
 		latestVersion = version

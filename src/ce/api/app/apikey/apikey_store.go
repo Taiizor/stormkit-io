@@ -8,7 +8,7 @@ import (
 	"text/template"
 
 	"github.com/stormkit-io/stormkit-io/src/lib/database"
-	"github.com/stormkit-io/stormkit-io/src/lib/slog"
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/types"
 	"gopkg.in/guregu/null.v3"
 )
@@ -70,8 +70,7 @@ func (s *Store) APIKeys(ctx context.Context, id types.ID, scope string) ([]Token
 	tmpl, err := template.New("select_api_keys").Parse(stmt.selectAPIKeys)
 
 	if err != nil {
-		slog.Errorf("error while parsing select_api_keys: %s", err.Error())
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeInternal, "failed to parse select_api_keys template")
 	}
 
 	var qb strings.Builder
@@ -89,8 +88,7 @@ func (s *Store) APIKeys(ctx context.Context, id types.ID, scope string) ([]Token
 	}
 
 	if err := tmpl.Execute(&qb, data); err != nil {
-		slog.Errorf("error executing query template: %s", err.Error())
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeInternal, "failed to execute API keys query template for scope=%s", scope)
 	}
 
 	rows, err := s.Query(ctx, qb.String(), id)
@@ -100,7 +98,7 @@ func (s *Store) APIKeys(ctx context.Context, id types.ID, scope string) ([]Token
 	}
 
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to query API keys for id=%d scope=%s", id, scope)
 	}
 
 	keys := []Token{}
@@ -115,7 +113,7 @@ func (s *Store) APIKeys(ctx context.Context, id types.ID, scope string) ([]Token
 		)
 
 		if err != nil {
-			return nil, err
+			return nil, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to scan API key row")
 		}
 
 		keys = append(keys, key)

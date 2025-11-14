@@ -13,6 +13,7 @@ import (
 	awsconf "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/stormkit-io/stormkit-io/src/lib/config"
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/slog"
 	"github.com/stormkit-io/stormkit-io/src/lib/utils"
 )
@@ -72,7 +73,7 @@ func Alibaba(args ClientArgs) (*AlibabaClient, error) {
 	)
 
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeExternal, "failed to load Alibaba OSS config for region=%s", conf.Alibaba.Region)
 	}
 
 	// Alibaba is S3 Compatible, so use that interface.
@@ -88,7 +89,7 @@ func Alibaba(args ClientArgs) (*AlibabaClient, error) {
 	)
 
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeExternal, "failed to create AWS client for Alibaba OSS")
 	}
 
 	endpoint := tea.String(fmt.Sprintf("%s.%s.fc.aliyuncs.com", conf.Alibaba.AccountID, conf.Alibaba.Region))
@@ -106,7 +107,7 @@ func Alibaba(args ClientArgs) (*AlibabaClient, error) {
 		})
 
 		if err != nil {
-			return nil, err
+			return nil, errors.Wrapf(err, errors.ErrorTypeExternal, "failed to create Alibaba Cloud SDK client for endpoint=%s", *endpoint)
 		}
 	}
 
@@ -134,8 +135,11 @@ func (a AlibabaClient) Upload(args UploadArgs) (*UploadResult, error) {
 	if args.ClientZip != "" {
 		result, err = a.awsClient.Upload(args)
 
-		if err != nil || result == nil {
-			return nil, err
+		if err != nil {
+			return nil, errors.Wrapf(err, errors.ErrorTypeExternal, "failed to upload client zip to Alibaba OSS bucket=%s", args.BucketName)
+		}
+		if result == nil {
+			return nil, errors.Wrap(errors.ErrInvalidInput, errors.ErrorTypeInternal, "upload result is nil")
 		}
 
 		result.Client.Location = strings.Replace(result.Client.Location, "aws:", "alibaba:", 1)
@@ -152,7 +156,7 @@ func (a AlibabaClient) Upload(args UploadArgs) (*UploadResult, error) {
 		copy.zip = args.ServerZip
 
 		if result.Server, err = a.uploadToFunctions(copy); err != nil {
-			return nil, err
+			return nil, errors.Wrapf(err, errors.ErrorTypeExternal, "failed to upload server functions to Alibaba for app=%d deployment=%d", args.AppID, args.DeploymentID)
 		}
 	}
 
@@ -167,7 +171,7 @@ func (a AlibabaClient) Upload(args UploadArgs) (*UploadResult, error) {
 		copy.zip = args.APIZip
 
 		if result.API, err = a.uploadToFunctions(copy); err != nil {
-			return nil, err
+			return nil, errors.Wrapf(err, errors.ErrorTypeExternal, "failed to upload API functions to Alibaba for app=%d deployment=%d", args.AppID, args.DeploymentID)
 		}
 	}
 
@@ -190,13 +194,13 @@ func (a AlibabaClient) DeleteArtifacts(ctx context.Context, args DeleteArtifacts
 
 	if args.FunctionLocation != "" {
 		if err := deleteFunctionVersion(args.FunctionLocation); err != nil {
-			return err
+			return errors.Wrapf(err, errors.ErrorTypeExternal, "failed to delete Alibaba function at location=%s", args.FunctionLocation)
 		}
 	}
 
 	if args.APILocation != "" {
 		if err := deleteFunctionVersion(args.APILocation); err != nil {
-			return err
+			return errors.Wrapf(err, errors.ErrorTypeExternal, "failed to delete Alibaba API function at location=%s", args.APILocation)
 		}
 	}
 
@@ -215,7 +219,7 @@ func (a AlibabaClient) DeleteArtifacts(ctx context.Context, args DeleteArtifacts
 		keyPrefix := fmt.Sprintf("%s/%s", pieces[1], pieces[2])
 
 		if err := a.awsClient.deleteS3Folder(ctx, bucketName, keyPrefix); err != nil {
-			return err
+			return errors.Wrapf(err, errors.ErrorTypeExternal, "failed to delete Alibaba OSS folder bucket=%s key_prefix=%s", bucketName, keyPrefix)
 		}
 	}
 

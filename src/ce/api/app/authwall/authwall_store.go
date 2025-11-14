@@ -2,10 +2,10 @@ package authwall
 
 import (
 	"context"
-	"errors"
 
 	"github.com/lib/pq"
 	"github.com/stormkit-io/stormkit-io/src/lib/database"
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/types"
 	"github.com/stormkit-io/stormkit-io/src/lib/utils"
 )
@@ -78,20 +78,27 @@ func (s *store) CreateLogin(ctx context.Context, aw *AuthWall) error {
 	row, err := s.QueryRow(ctx, stmt.createLogin, params...)
 
 	if err != nil {
-		return err
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to create auth wall login for env_id=%d", aw.EnvID)
 	}
 
 	if row == nil {
-		return errors.New("no row returned")
+		return errors.New(errors.ErrorTypeDatabase, "no row returned").WithContext("env_id", aw.EnvID)
 	}
 
-	return row.Scan(&aw.LoginID)
+	if err := row.Scan(&aw.LoginID); err != nil {
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to scan login ID for env_id=%d", aw.EnvID)
+	}
+
+	return nil
 }
 
 // RemoveLogins removes a login.
 func (s *store) RemoveLogins(ctx context.Context, envID types.ID, loginIDs []types.ID) error {
 	_, err := s.Exec(ctx, stmt.removeLogins, envID, pq.Array(loginIDs))
-	return err
+	if err != nil {
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to remove %d auth wall logins for env_id=%d", len(loginIDs), envID)
+	}
+	return nil
 }
 
 // Login validates the login and returns the auth wall struct with the login id.
@@ -99,7 +106,7 @@ func (s *store) Login(ctx context.Context, aw *AuthWall) (bool, error) {
 	row, err := s.QueryRow(ctx, stmt.selectPassword, aw.LoginEmail, aw.EnvID)
 
 	if err != nil {
-		return false, err
+		return false, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to query auth wall login for email=%s env_id=%d", aw.LoginEmail, aw.EnvID)
 	}
 
 	if row == nil {
@@ -109,7 +116,7 @@ func (s *store) Login(ctx context.Context, aw *AuthWall) (bool, error) {
 	var password string
 
 	if err := row.Scan(&aw.LoginID, &password); err != nil {
-		return false, err
+		return false, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to scan auth wall password for env_id=%d", aw.EnvID)
 	}
 
 	return utils.DecryptToString(password) == aw.LoginPassword, nil
@@ -118,7 +125,10 @@ func (s *store) Login(ctx context.Context, aw *AuthWall) (bool, error) {
 // UpdateLastLogin updates the last login time.
 func (s *store) UpdateLastLogin(ctx context.Context, loginID types.ID) error {
 	_, err := s.Exec(ctx, stmt.updateLastLogin, loginID)
-	return err
+	if err != nil {
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to update last login for login_id=%d", loginID)
+	}
+	return nil
 }
 
 // Logins returns all logins for an environment.
@@ -126,7 +136,7 @@ func (s *store) Logins(ctx context.Context, envID types.ID) ([]AuthWall, error) 
 	rows, err := s.Query(ctx, stmt.selectLogins, envID)
 
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to query auth wall logins for env_id=%d", envID)
 	}
 
 	defer rows.Close()
@@ -140,7 +150,7 @@ func (s *store) Logins(ctx context.Context, envID types.ID) ([]AuthWall, error) 
 		)
 
 		if err != nil {
-			return nil, err
+			return nil, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to scan auth wall login for env_id=%d", envID)
 		}
 
 		logins = append(logins, aw)
@@ -151,7 +161,10 @@ func (s *store) Logins(ctx context.Context, envID types.ID) ([]AuthWall, error) 
 
 func (s *store) SetAuthWallConfig(ctx context.Context, envID types.ID, cfg *Config) error {
 	_, err := s.Exec(ctx, stmt.setAuthWallConfig, cfg, envID)
-	return err
+	if err != nil {
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to set auth wall config for env_id=%d", envID)
+	}
+	return nil
 }
 
 // AuthWallConfig returns the configuration associated with the environment.
@@ -159,7 +172,7 @@ func (s *store) AuthWallConfig(ctx context.Context, envID types.ID) (*Config, er
 	row, err := s.QueryRow(ctx, "SELECT auth_wall_conf FROM apps_build_conf WHERE env_id = $1", envID)
 
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to query auth wall config for env_id=%d", envID)
 	}
 
 	if row == nil {
@@ -169,7 +182,7 @@ func (s *store) AuthWallConfig(ctx context.Context, envID types.ID) (*Config, er
 	cfg := &Config{}
 
 	if err := row.Scan(cfg); err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to scan auth wall config for env_id=%d", envID)
 	}
 
 	return cfg, nil

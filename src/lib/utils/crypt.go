@@ -7,9 +7,9 @@ import (
 	"crypto/sha1"
 	"encoding/base64"
 	"encoding/binary"
-	"errors"
 	"io"
 
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/types"
 )
 
@@ -70,18 +70,18 @@ func Encrypt(plaintext []byte, altKey ...[]byte) (ciphertext []byte, err error) 
 
 	block, err := aes.NewCipher(key[:])
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeInternal, "failed to create AES cipher")
 	}
 
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeInternal, "failed to create GCM cipher")
 	}
 
 	nonce := make([]byte, gcm.NonceSize())
 	_, err = io.ReadFull(rand.Reader, nonce)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeInternal, "failed to generate random nonce")
 	}
 
 	return gcm.Seal(nonce, nonce, plaintext, nil), nil
@@ -102,21 +102,21 @@ func Decrypt(ciphertext []byte, altKey ...[]byte) (plaintext []byte, err error) 
 	}
 
 	if len(key) == 0 {
-		return nil, errors.New("no encryption key provided")
+		return nil, errors.New(errors.ErrorTypeValidation, "no encryption key provided")
 	}
 
 	block, err := aes.NewCipher(key[:])
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeInternal, "failed to create AES cipher for decryption")
 	}
 
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeInternal, "failed to create GCM cipher for decryption")
 	}
 
 	if len(ciphertext) < gcm.NonceSize() {
-		return nil, errors.New("malformed ciphertext")
+		return nil, errors.New(errors.ErrorTypeValidation, "malformed ciphertext")
 	}
 
 	return gcm.Open(nil,
@@ -141,7 +141,7 @@ func DecryptID(encryptedString string) (types.ID, error) {
 	idBytes, err := Decrypt(idBytes)
 
 	if err != nil {
-		return 0, err
+		return 0, errors.Wrapf(err, errors.ErrorTypeInternal, "failed to decrypt ID")
 	}
 
 	return types.ID(binary.LittleEndian.Uint32(idBytes)), nil

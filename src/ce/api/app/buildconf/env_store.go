@@ -8,6 +8,7 @@ import (
 	"text/template"
 
 	"github.com/stormkit-io/stormkit-io/src/lib/database"
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/types"
 )
 
@@ -49,14 +50,14 @@ func (s *Store) Insert(ctx context.Context, c *Env, txs ...*sql.Tx) error {
 	}
 
 	if err != nil {
-		return err
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to prepare insert config statement for env=%s", c.Name)
 	}
 
 	// First create the environment in the database.
 	data, err := json.Marshal(c.Data)
 
 	if err != nil {
-		return err
+		return errors.Wrapf(err, errors.ErrorTypeInternal, "failed to marshal env data for env=%s", c.Name)
 	}
 
 	err = statement.QueryRowContext(ctx,
@@ -66,10 +67,10 @@ func (s *Store) Insert(ctx context.Context, c *Env, txs ...*sql.Tx) error {
 	).Scan(&c.ID)
 
 	if err != nil {
-		return err
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to insert env with name=%s app_id=%d", c.Name, c.AppID)
 	}
 
-	return err
+	return nil
 }
 
 // Update updates the given configuration.
@@ -77,7 +78,7 @@ func (s *Store) Update(ctx context.Context, c *Env) error {
 	data, err := json.Marshal(c.Data)
 
 	if err != nil {
-		return err
+		return errors.Wrapf(err, errors.ErrorTypeInternal, "failed to marshal env data for env_id=%d", c.ID)
 	}
 
 	_, err = s.Exec(

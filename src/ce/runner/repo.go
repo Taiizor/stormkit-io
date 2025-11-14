@@ -2,12 +2,12 @@ package runner
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"path"
 	"strings"
 
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/utils"
 	"github.com/stormkit-io/stormkit-io/src/lib/utils/sys"
 )

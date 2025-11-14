@@ -11,6 +11,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/slog"
 	"github.com/stormkit-io/stormkit-io/src/lib/utils"
 )
@@ -170,7 +171,7 @@ func (r *Request) Do() (*HTTPResponse, error) {
 	req, err := http.NewRequest(r.method, r.url, buf)
 
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeInternal, "failed to create HTTP request method=%s url=%s", r.method, r.url)
 	}
 
 	// Add query parameters, if any
@@ -202,7 +203,7 @@ func (r *Request) Do() (*HTTPResponse, error) {
 	res, err := client.Do(req)
 
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeExternal, "failed to execute HTTP request method=%s url=%s", r.method, r.url)
 	}
 
 	if res == nil {

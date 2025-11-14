@@ -7,6 +7,7 @@ import (
 	"text/template"
 
 	"github.com/stormkit-io/stormkit-io/src/lib/database"
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/slog"
 	"github.com/stormkit-io/stormkit-io/src/lib/types"
 	"github.com/stormkit-io/stormkit-io/src/lib/utils"
@@ -83,8 +84,7 @@ func (s *Store) InsertLogs(ctx context.Context, logs []*Log) error {
 	var qb strings.Builder
 
 	if err := s.batchTmpl.Execute(&qb, logs); err != nil {
-		slog.Errorf("error executing batch query template: %v", err)
-		return err
+		return errors.Wrapf(err, errors.ErrorTypeInternal, "failed to execute batch query template for %d logs", len(logs))
 	}
 
 	params := []any{}
@@ -100,7 +100,7 @@ func (s *Store) InsertLogs(ctx context.Context, logs []*Log) error {
 	rows, err := s.Query(ctx, qb.String(), params...)
 
 	if err != nil {
-		return err
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to insert %d logs", len(logs))
 	}
 
 	if rows == nil {
@@ -113,13 +113,13 @@ func (s *Store) InsertLogs(ctx context.Context, logs []*Log) error {
 
 	for rows.Next() {
 		if err := rows.Scan(&logs[i].ID); err != nil {
-			return err
+			return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to scan log ID at index %d", i)
 		}
 
 		i = i + 1
 	}
 
-	return err
+	return nil
 }
 
 // LogQuery represents a log query. It inherits all fields

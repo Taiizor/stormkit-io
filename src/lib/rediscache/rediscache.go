@@ -2,7 +2,6 @@ package rediscache
 
 import (
 	"context"
-	"errors"
 	"io"
 	"net"
 	"strings"
@@ -12,6 +11,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/redis/go-redis/v9/maintnotifications"
 	"github.com/stormkit-io/stormkit-io/src/lib/config"
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/slog"
 )
 
@@ -38,7 +38,7 @@ func newClient() (*redis.Client, error) {
 	_, err := client.Ping(context.Background()).Result()
 
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeExternal, "failed to ping Redis at %s", config.Get().RedisAddr)
 	}
 
 	return client, nil
