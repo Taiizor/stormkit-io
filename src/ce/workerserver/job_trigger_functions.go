@@ -44,7 +44,7 @@ func InvokeDueFunctionTriggers(ctx context.Context) error {
 		nextRunAt, err := gronx.NextTickAfter(tf.Cron, time.Now().UTC(), false)
 
 		if err != nil {
-			wrappedErr := errors.Wrap(err, errors.ErrorTypeInternal, "failed to calculate next tick").WithMetadata("cron", tf.Cron).WithMetadata("triggerID", tf.ID.String())
+			wrappedErr := errors.Wrap(err, errors.ErrorTypeInternal, "failed to calculate next tick").WithContext("cron", tf.Cron).WithContext("triggerID", tf.ID.String())
 			slog.Errorf("error while calculating next tick: %s", wrappedErr.Error())
 		}
 
@@ -63,7 +63,7 @@ func InvokeDueFunctionTriggers(ctx context.Context) error {
 	}
 
 	if _, err := tasks.Enqueue(ctx, tasks.TriggerFunctionHttp, messages, nil); err != nil {
-		wrappedErr := errors.Wrap(err, errors.ErrorTypeInternal, "failed to enqueue trigger task").WithMetadata("messagesCount", len(messages))
+		wrappedErr := errors.Wrap(err, errors.ErrorTypeInternal, "failed to enqueue trigger task").WithContext("messagesCount", len(messages))
 		slog.Errorf("error occurred while enqueuing task %s", wrappedErr.Error())
 		return wrappedErr
 	}
@@ -117,7 +117,7 @@ func HandleFunctionTrigger(ctx context.Context, t *asynq.Task) error {
 		})
 
 		if err != nil {
-			wrappedErr := errors.Wrap(err, errors.ErrorTypeExternal, "trigger function request failed").WithMetadata("url", tf.URL).WithMetadata("triggerID", tf.ID.String())
+			wrappedErr := errors.Wrap(err, errors.ErrorTypeExternal, "trigger function request failed").WithContext("url", tf.URL).WithContext("triggerID", tf.ID.String())
 			slog.Errorf("trigger function request failed %v", wrappedErr)
 			continue
 		}
@@ -128,12 +128,12 @@ func HandleFunctionTrigger(ctx context.Context, t *asynq.Task) error {
 	store := functiontrigger.NewStore()
 
 	if err := store.InsertLogs(ctx, logs); err != nil {
-		wrappedErr := errors.Wrap(err, errors.ErrorTypeDatabase, "failed to insert trigger logs").WithMetadata("logsCount", len(logs))
+		wrappedErr := errors.Wrap(err, errors.ErrorTypeDatabase, "failed to insert trigger logs").WithContext("logsCount", len(logs))
 		slog.Errorf("error while inserting function trigger logs: %s", wrappedErr.Error())
 	}
 
 	if err := store.SetNextRunAt(ctx, updates); err != nil {
-		wrappedErr := errors.Wrap(err, errors.ErrorTypeDatabase, "failed to update next run times").WithMetadata("updatesCount", len(updates))
+		wrappedErr := errors.Wrap(err, errors.ErrorTypeDatabase, "failed to update next run times").WithContext("updatesCount", len(updates))
 		slog.Errorf("error while inserting function trigger batch updates: %s", wrappedErr.Error())
 	}
 

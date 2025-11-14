@@ -52,7 +52,7 @@ func PingDomains(ctx context.Context) error {
 	})
 
 	if err != nil {
-		return errors.Wrap(err, errors.ErrorTypeDatabase, "failed to fetch domains").WithMetadata("modID", modID)
+		return errors.Wrap(err, errors.ErrorTypeDatabase, "failed to fetch domains").WithContext("modID", modID)
 	}
 
 	domainsLen := len(domains)
@@ -134,7 +134,7 @@ func PingDomains(ctx context.Context) error {
 	}
 
 	if err := buildconf.DomainStore().UpdateLastPing(ctx, pingResults); err != nil {
-		return errors.Wrap(err, errors.ErrorTypeDatabase, "failed to update last ping").WithMetadata("resultsCount", len(pingResults))
+		return errors.Wrap(err, errors.ErrorTypeDatabase, "failed to update last ping").WithContext("resultsCount", len(pingResults))
 	}
 
 	return nil

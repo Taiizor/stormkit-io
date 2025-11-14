@@ -31,7 +31,7 @@ func RemoveDeploymentArtifactsManually(ctx context.Context, numberOfDays int) ([
 	deployments, err := store.DeploymentsOlderThan30Days(ctx, numberOfDays, limit)
 
 	if err != nil {
-		return nil, errors.Wrap(err, errors.ErrorTypeDatabase, "failed to fetch old deployments").WithMetadata("numberOfDays", numberOfDays).WithMetadata("limit", limit)
+		return nil, errors.Wrap(err, errors.ErrorTypeDatabase, "failed to fetch old deployments").WithContext("numberOfDays", numberOfDays).WithContext("limit", limit)
 	}
 
 	if len(deployments) == 0 {
@@ -50,7 +50,7 @@ func RemoveDeploymentArtifactsManually(ctx context.Context, numberOfDays int) ([
 		}
 
 		if err := client.DeleteArtifacts(ctx, args); err != nil {
-			wrappedErr := errors.Wrap(err, errors.ErrorTypeExternal, "failed to delete artifacts").WithMetadata("deploymentID", d.ID.String())
+			wrappedErr := errors.Wrap(err, errors.ErrorTypeExternal, "failed to delete artifacts").WithContext("deploymentID", d.ID.String())
 			slog.Errorf("error while deleting artifact: %s", wrappedErr.Error())
 			continue
 		}
@@ -60,7 +60,7 @@ func RemoveDeploymentArtifactsManually(ctx context.Context, numberOfDays int) ([
 	}
 
 	if err = store.MarkDeploymentArtifactsDeleted(ctx, idsToBeMarked); err != nil {
-		wrappedErr := errors.Wrap(err, errors.ErrorTypeDatabase, "failed to mark artifacts as deleted").WithMetadata("idsCount", len(idsToBeMarked))
+		wrappedErr := errors.Wrap(err, errors.ErrorTypeDatabase, "failed to mark artifacts as deleted").WithContext("idsCount", len(idsToBeMarked))
 		slog.Errorf("error while marking artifacts deleted: %s", strings.Join(idsToBeMarkedStr, ", "))
 		return nil, wrappedErr
 	}

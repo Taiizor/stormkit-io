@@ -55,7 +55,7 @@ func SyncAnalyticsVisitorsDaily(ctx context.Context) error {
 		}
 
 		if err := tmpl.Execute(&qb, data); err != nil {
-			wrappedErr := errors.Wrap(err, errors.ErrorTypeInternal, "failed to execute analytics template").WithMetadata("statusCode", statusCode)
+			wrappedErr := errors.Wrap(err, errors.ErrorTypeInternal, "failed to execute analytics template").WithContext("statusCode", statusCode)
 			slog.Errorf("error executing query template: %s", wrappedErr.Error())
 			return wrappedErr
 		}
@@ -63,7 +63,7 @@ func SyncAnalyticsVisitorsDaily(ctx context.Context) error {
 		_, err = store.Exec(ctx, qb.String(), pq.Array(params))
 
 		if err != nil {
-			wrappedErr := errors.Wrap(err, errors.ErrorTypeDatabase, "failed to sync visitors data").WithMetadata("statusCode", statusCode).WithMetadata("days", days)
+			wrappedErr := errors.Wrap(err, errors.ErrorTypeDatabase, "failed to sync visitors data").WithContext("statusCode", statusCode).WithContext("days", days)
 			slog.Errorf("could not sync visitors data: %s", wrappedErr.Error())
 		}
 	}
@@ -97,7 +97,7 @@ func SyncAnalyticsVisitorsHourly(ctx context.Context) error {
 		}
 
 		if err := tmpl.Execute(&qb, data); err != nil {
-			wrappedErr := errors.Wrap(err, errors.ErrorTypeInternal, "failed to execute analytics template").WithMetadata("statusCode", statusCode)
+			wrappedErr := errors.Wrap(err, errors.ErrorTypeInternal, "failed to execute analytics template").WithContext("statusCode", statusCode)
 			slog.Errorf("error executing query template: %s", wrappedErr.Error())
 			return wrappedErr
 		}
@@ -105,7 +105,7 @@ func SyncAnalyticsVisitorsHourly(ctx context.Context) error {
 		_, err = store.Exec(ctx, qb.String(), pq.Array(params))
 
 		if err != nil {
-			wrappedErr := errors.Wrap(err, errors.ErrorTypeDatabase, "failed to sync hourly visitors data").WithMetadata("statusCode", statusCode)
+			wrappedErr := errors.Wrap(err, errors.ErrorTypeDatabase, "failed to sync hourly visitors data").WithContext("statusCode", statusCode)
 			slog.Errorf("could not sync visitors data: %s", wrappedErr.Error())
 		}
 	}
