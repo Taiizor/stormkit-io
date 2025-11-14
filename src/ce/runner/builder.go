@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"path"
 
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/utils/file"
 	"github.com/stormkit-io/stormkit-io/src/lib/utils/sys"
 )
@@ -78,7 +79,11 @@ func (bm Builder) ExecCommands(ctx context.Context) error {
 		Stderr: bm.reporter.File(),
 	})
 
-	return cmd.Run()
+	if err := cmd.Run(); err != nil {
+		return errors.Wrapf(err, errors.ErrorTypeInternal, "failed to execute build command: %s", bm.cmd)
+	}
+
+	return nil
 }
 
 func (bm Builder) BuildApiIfNecessary(ctx context.Context) (bool, error) {
@@ -103,5 +108,9 @@ func (bm Builder) BuildApiIfNecessary(ctx context.Context) (bool, error) {
 		Reporter:       bm.reporter,
 	})
 
-	return true, bundler.BuildAll()
+	if err := bundler.BuildAll(); err != nil {
+		return true, errors.Wrapf(err, errors.ErrorTypeInternal, "failed to build API in directory: %s", bm.apiDir)
+	}
+
+	return true, nil
 }

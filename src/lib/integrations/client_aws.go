@@ -15,6 +15,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/route53"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/stormkit-io/stormkit-io/src/lib/config"
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 )
 
 type AWSOptions struct {
@@ -84,7 +85,7 @@ func AWS(args ClientArgs, opts *AWSOptions) (*AWSClient, error) {
 	}
 
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeExternal, "failed to load AWS config for region=%s", args.Region)
 	}
 
 	if args.Middlewares != nil {

@@ -9,6 +9,7 @@ import (
 	"path"
 	"strings"
 
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/utils/mise"
 	"github.com/stormkit-io/stormkit-io/src/lib/utils/sys"
 )
@@ -51,10 +52,14 @@ func (pck *PackageJson) Write(fullPath string) error {
 	data, err := json.Marshal(pck)
 
 	if err != nil {
-		return err
+		return errors.Wrapf(err, errors.ErrorTypeInternal, "failed to marshal package.json at path=%s", fullPath)
 	}
 
-	return os.WriteFile(fullPath, data, 0664)
+	if err := os.WriteFile(fullPath, data, 0664); err != nil {
+		return errors.Wrapf(err, errors.ErrorTypeInternal, "failed to write package.json at path=%s", fullPath)
+	}
+
+	return nil
 }
 
 type InstallerInterface interface {

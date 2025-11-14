@@ -14,6 +14,7 @@ import (
 	"github.com/stormkit-io/stormkit-io/src/ce/api/app/buildconf"
 	"github.com/stormkit-io/stormkit-io/src/lib/config"
 	"github.com/stormkit-io/stormkit-io/src/lib/database"
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/integrations"
 	"github.com/stormkit-io/stormkit-io/src/lib/slog"
 	"github.com/stormkit-io/stormkit-io/src/lib/types"
@@ -36,11 +37,13 @@ func (s *Store) ManifestByDeploymentID(ctx context.Context, deploymentID, appID 
 	row, err := s.QueryRow(ctx, stmt.selectBuildManifest, deploymentID, appID)
 
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to query build manifest for deployment_id=%d app_id=%d", deploymentID, appID)
 	}
 
-	err = row.Scan(&d.BuildManifest)
-	return d, err
+	if err = row.Scan(&d.BuildManifest); err != nil {
+		return nil, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to scan build manifest for deployment_id=%d app_id=%d", deploymentID, appID)
+	}
+	return d, nil
 }
 
 type ConfigSnapshot struct {
@@ -58,7 +61,7 @@ func (s *Store) DeploymentByID(ctx context.Context, id types.ID) (*Deployment, e
 	row, err := s.QueryRow(ctx, stmt.selectDeployment, id)
 
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to query deployment with id=%d", id)
 	}
 
 	err = row.Scan(
@@ -76,18 +79,17 @@ func (s *Store) DeploymentByID(ctx context.Context, id types.ID) (*Deployment, e
 
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, nil
+			return nil, errors.New(errors.ErrorTypeNotFound, "deployment not found").WithContext("deployment_id", id)
 		}
 
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to scan deployment with id=%d", id)
 	}
 
 	if len(d.ConfigCopy) > 0 {
 		copy := ConfigSnapshot{}
 
 		if err := json.Unmarshal(d.ConfigCopy, &copy); err != nil {
-			slog.Errorf("error while unmarshaling config copy: %s", err.Error())
-			return nil, err
+			return nil, errors.Wrapf(err, errors.ErrorTypeInternal, "failed to unmarshal config copy for deployment_id=%d", id)
 		}
 
 		d.BuildConfig = copy.BuildConfig
@@ -110,17 +112,17 @@ func (s *Store) DeploymentByIDWithLogs(ctx context.Context, id, appID types.ID) 
 	rows, err := s.Query(ctx, stmt.selectDeploymentWithLogs, id, appID)
 
 	if rows == nil {
-		return nil, nil
+		return nil, errors.New(errors.ErrorTypeNotFound, "deployment not found").WithContext("deployment_id", id).WithContext("app_id", appID)
 	}
 
 	defer rows.Close()
 
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, nil
+			return nil, errors.New(errors.ErrorTypeNotFound, "deployment not found").WithContext("deployment_id", id).WithContext("app_id", appID)
 		}
 
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to query deployment with logs for deployment_id=%d app_id=%d", id, appID)
 	}
 
 	for rows.Next() {
@@ -137,11 +139,11 @@ func (s *Store) DeploymentByIDWithLogs(ctx context.Context, id, appID types.ID) 
 		)
 
 		if err != nil {
-			break
+			return nil, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to scan deployment logs for deployment_id=%d app_id=%d", id, appID)
 		}
 	}
 
-	return d, err
+	return d, nil
 }
 
 // DeploymentsQueryFilters defines the filters that are

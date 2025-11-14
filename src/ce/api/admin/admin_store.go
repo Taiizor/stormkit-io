@@ -11,6 +11,7 @@ import (
 
 	"github.com/stormkit-io/stormkit-io/src/lib/config"
 	"github.com/stormkit-io/stormkit-io/src/lib/database"
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/rediscache"
 	"github.com/stormkit-io/stormkit-io/src/lib/slog"
 	"github.com/stormkit-io/stormkit-io/src/lib/utils"
@@ -81,7 +82,7 @@ func (s *store) Config(ctx context.Context) (InstanceConfig, error) {
 	row, err := s.QueryRow(ctx, stmt.selectConfig)
 
 	if err != nil {
-		return InstanceConfig{}, err
+		return InstanceConfig{}, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to query instance config")
 	}
 
 	cnf = &InstanceConfig{}
@@ -91,7 +92,7 @@ func (s *store) Config(ctx context.Context) (InstanceConfig, error) {
 			return InstanceConfig{}, nil
 		}
 
-		return InstanceConfig{}, err
+		return InstanceConfig{}, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to scan instance config")
 	}
 
 	// Ensure DomainConfig is always set, this adds backwards compatibility for instances

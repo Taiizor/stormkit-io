@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -13,7 +12,7 @@ import (
 	"sync"
 
 	"github.com/stormkit-io/stormkit-io/src/lib/config"
-	"github.com/stormkit-io/stormkit-io/src/lib/slog"
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/utils"
 	"github.com/stormkit-io/stormkit-io/src/lib/utils/file"
 	"github.com/stormkit-io/stormkit-io/src/lib/utils/sys"
@@ -56,13 +55,17 @@ func (c *FilesysClient) Invoke(args InvokeArgs) (*InvokeResult, error) {
 	fnPath, fnHandler := c.parseFunctionLocation(args.ARN)
 
 	if args.Command != "" {
-		return c.ProcessManager().Invoke(args, path.Dir(fnPath))
+		result, err := c.ProcessManager().Invoke(args, path.Dir(fnPath))
+		if err != nil {
+			return nil, errors.Wrapf(err, errors.ErrorTypeInternal, "failed to invoke process manager for ARN=%s", args.ARN)
+		}
+		return result, nil
 	}
 
 	requestPayload, err := json.Marshal(prepareInvokeRequest(args))
 
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeInternal, "failed to marshal invoke request for ARN=%s", args.ARN)
 	}
 
 	var script string
@@ -92,8 +95,7 @@ func (c *FilesysClient) Invoke(args InvokeArgs) (*InvokeResult, error) {
 	out, err := cmd.CombinedOutput()
 
 	if err != nil {
-		slog.Errorf("error while running local command: %v", err)
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeInternal, "failed to execute node command for ARN=%s", args.ARN)
 	}
 
 	if out == nil {
@@ -103,7 +105,7 @@ func (c *FilesysClient) Invoke(args InvokeArgs) (*InvokeResult, error) {
 	response := FunctionResponse{}
 
 	if err := json.Unmarshal(out, &response); err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeInternal, "failed to unmarshal function response for ARN=%s", args.ARN)
 	}
 
 	body := utils.GetString(response.Buffer, response.Body)

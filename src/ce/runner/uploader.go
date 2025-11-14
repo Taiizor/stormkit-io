@@ -1,11 +1,11 @@
 package runner
 
 import (
-	"errors"
 	"os"
 	"strings"
 
 	"github.com/stormkit-io/stormkit-io/src/lib/config"
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/integrations"
 	"github.com/stormkit-io/stormkit-io/src/lib/slog"
 	"github.com/stormkit-io/stormkit-io/src/lib/types"
@@ -118,11 +118,13 @@ func (u *Uploader) Upload(args UploadArgs) (*integrations.UploadResult, error) {
 			"For client-side applications, the limit is 50MB and " +
 			"for serverless applications 100MB."
 
-		//lint:ignore ST1005 This message is being consumed by the frontend
-		return nil, errors.New(msg)
+		return nil, errors.New(errors.ErrorTypeValidation, msg).
+			WithContext("client_zip", args.ClientZip).
+			WithContext("server_zip", args.ServerZip).
+			WithContext("api_zip", args.ApiZip)
 	}
 
-	return integrations.
+	result, err := integrations.
 		Client(integrations.ClientArgs{
 			Provider:  u.conf.Provider,
 			AccessKey: u.conf.AccessKey,
@@ -142,4 +144,10 @@ func (u *Uploader) Upload(args UploadArgs) (*integrations.UploadResult, error) {
 			Runtime:       args.Runtime,
 			BucketName:    utils.GetString(args.BucketName, u.conf.BucketName),
 		})
+
+	if err != nil {
+		return nil, errors.Wrapf(err, errors.ErrorTypeExternal, "failed to upload deployment for app_id=%d deployment_id=%d", args.AppID, args.DeploymentID)
+	}
+
+	return result, nil
 }

@@ -3,7 +3,7 @@ package integrations
 import (
 	"bytes"
 	"context"
-	"errors"
+	sterrors "errors"
 	"fmt"
 	"io"
 	"os"
@@ -15,6 +15,7 @@ import (
 	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/stormkit-io/stormkit-io/src/lib/config"
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/utils/file"
 )
 
@@ -35,11 +36,13 @@ func (a *AWSClient) getFile(args GetFileArgs) (*GetFileResult, error) {
 	if err != nil {
 		var nsk *s3types.NoSuchKey
 
-		if errors.As(err, &nsk) {
+		if sterrors.As(err, &nsk) {
 			return nil, nil
 		}
 
-		return nil, err
+		return nil, errors.Wrap(err, errors.ErrorTypeExternal, "failed to get S3 object").
+			WithContext("bucket", bucketName).
+			WithContext("key", keyPrefix)
 	}
 
 	if out == nil {
@@ -49,7 +52,9 @@ func (a *AWSClient) getFile(args GetFileArgs) (*GetFileResult, error) {
 	buf := bytes.NewBuffer(nil)
 
 	if _, err := io.Copy(buf, out.Body); err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, errors.ErrorTypeInternal, "failed to read S3 object body").
+			WithContext("bucket", bucketName).
+			WithContext("key", keyPrefix)
 	}
 
 	content := buf.Bytes()
@@ -91,14 +96,18 @@ func (a *AWSClient) ZipDownloader(deploymentID, bucket, keyprefix string) (strin
 	err = os.Mkdir(path, 0775)
 
 	if err != nil {
-		return "", err
+		return "", errors.Wrap(err, errors.ErrorTypeInternal, "failed to create directory for deployment").
+			WithContext("deployment_id", deploymentID).
+			WithContext("path", path)
 	}
 
 	zipPath := filepath.Join(path, "sk-client.zip")
 	f, err := os.Create(zipPath)
 
 	if err != nil {
-		return "", err
+		return "", errors.Wrap(err, errors.ErrorTypeInternal, "failed to create zip file").
+			WithContext("deployment_id", deploymentID).
+			WithContext("zip_path", zipPath)
 	}
 
 	defer f.Close()
@@ -108,8 +117,18 @@ func (a *AWSClient) ZipDownloader(deploymentID, bucket, keyprefix string) (strin
 		Key:    aws.String(keyprefix),
 	})
 
+	if err != nil {
+		return "", errors.Wrap(err, errors.ErrorTypeExternal, "failed to download zip from S3").
+			WithContext("deployment_id", deploymentID).
+			WithContext("bucket", bucket).
+			WithContext("key", keyprefix)
+	}
+
 	if n == 0 {
-		return "", errors.New("did not download any file")
+		return "", errors.New(errors.ErrorTypeExternal, "did not download any file").
+			WithContext("deployment_id", deploymentID).
+			WithContext("bucket", bucket).
+			WithContext("key", keyprefix)
 	}
 
 	unzipOpts := file.UnzipOpts{
@@ -119,14 +138,19 @@ func (a *AWSClient) ZipDownloader(deploymentID, bucket, keyprefix string) (strin
 	}
 
 	if err := file.Unzip(unzipOpts); err != nil {
-		return "", err
+		return "", errors.Wrap(err, errors.ErrorTypeInternal, "failed to unzip file").
+			WithContext("deployment_id", deploymentID).
+			WithContext("zip_path", zipPath).
+			WithContext("extract_dir", path)
 	}
 
 	if err := os.Remove(zipPath); err != nil {
-		return "", err
+		return "", errors.Wrap(err, errors.ErrorTypeInternal, "failed to remove zip file").
+			WithContext("deployment_id", deploymentID).
+			WithContext("zip_path", zipPath)
 	}
 
-	return path, err
+	return path, nil
 }
 
 func (a *AWSClient) serveFromZip(args GetFileArgs) (*GetFileResult, error) {
@@ -176,13 +200,19 @@ func (a *AWSClient) uploadZipToS3(pathToZip string, args UploadArgs) (UploadOver
 	content, err := os.ReadFile(pathToZip)
 
 	if err != nil {
-		return result, err
+		return result, errors.Wrap(err, errors.ErrorTypeInternal, "failed to read zip file").
+			WithContext("app_id", args.AppID).
+			WithContext("deployment_id", args.DeploymentID).
+			WithContext("path", pathToZip)
 	}
 
 	stat, err := os.Stat(pathToZip)
 
 	if err != nil {
-		return result, err
+		return result, errors.Wrap(err, errors.ErrorTypeInternal, "failed to get zip file info").
+			WithContext("app_id", args.AppID).
+			WithContext("deployment_id", args.DeploymentID).
+			WithContext("path", pathToZip)
 	}
 
 	zipName := path.Base(pathToZip)
@@ -201,7 +231,12 @@ func (a *AWSClient) uploadZipToS3(pathToZip string, args UploadArgs) (UploadOver
 	})
 
 	if err != nil {
-		return result, err
+		return result, errors.Wrap(err, errors.ErrorTypeExternal, "failed to upload zip to S3").
+			WithContext("app_id", args.AppID).
+			WithContext("deployment_id", args.DeploymentID).
+			WithContext("bucket", bucketName).
+			WithContext("key_prefix", keyPrefix).
+			WithContext("file", zipName)
 	}
 
 	result.BytesUploaded = size
@@ -238,7 +273,14 @@ func (a *AWSClient) UploadFile(file File, s3args any) error {
 	}
 
 	_, err := a.uploader.Upload(context.Background(), input)
-	return err
+	if err != nil {
+		return errors.Wrap(err, errors.ErrorTypeExternal, "failed to upload file to S3").
+			WithContext("bucket", opts.BucketName).
+			WithContext("key", filePath).
+			WithContext("size", file.Size).
+			WithContext("content_type", file.ContentType)
+	}
+	return nil
 }
 
 func (a *AWSClient) deleteS3Folder(ctx context.Context, bucketName, keyPrefix string) error {
@@ -249,7 +291,9 @@ func (a *AWSClient) deleteS3Folder(ctx context.Context, bucketName, keyPrefix st
 	})
 
 	if err != nil {
-		return fmt.Errorf("unable to list objects in folder %q: %v", keyPrefix, err)
+		return errors.Wrap(err, errors.ErrorTypeExternal, "failed to list S3 objects").
+			WithContext("bucket", bucketName).
+			WithContext("key_prefix", keyPrefix)
 	}
 
 	// Prepare to delete the listed objects
@@ -275,7 +319,14 @@ func (a *AWSClient) deleteS3Folder(ctx context.Context, bucketName, keyPrefix st
 		},
 	})
 
-	return err
+	if err != nil {
+		return errors.Wrap(err, errors.ErrorTypeExternal, "failed to delete S3 objects").
+			WithContext("bucket", bucketName).
+			WithContext("key_prefix", keyPrefix).
+			WithContext("object_count", len(objectsToDelete))
+	}
+
+	return nil
 }
 
 // parseS3Location parses a string in the following format:

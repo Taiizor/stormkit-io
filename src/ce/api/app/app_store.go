@@ -15,6 +15,7 @@ import (
 	"github.com/stormkit-io/stormkit-io/src/ce/api/app/buildconf"
 	"github.com/stormkit-io/stormkit-io/src/lib/config"
 	"github.com/stormkit-io/stormkit-io/src/lib/database"
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/slog"
 	"github.com/stormkit-io/stormkit-io/src/lib/types"
 )
@@ -43,11 +44,11 @@ func (s *Store) InsertApp(ctx context.Context, a *App) (*App, error) {
 
 	errFn := func(err error) (*App, error) {
 		_ = tx.Rollback()
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to insert app with display_name=%s user_id=%d", a.DisplayName, a.UserID)
 	}
 
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to begin transaction for app insertion")
 	}
 
 	repo := null.NewString(a.Repo, a.Repo != "")
