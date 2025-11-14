@@ -2,10 +2,10 @@ package database
 
 import (
 	"database/sql"
-	"errors"
 	"strings"
 	"time"
 
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/slog"
 	"golang.org/x/net/context"
 )
@@ -38,12 +38,17 @@ func (s *Store) Query(ctx context.Context, query string, args ...any) (*sql.Rows
 	}
 
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to prepare query")
 	}
 
 	defer stmt.Close()
 
-	return stmt.QueryContext(ctx, args...)
+	rows, err := stmt.QueryContext(ctx, args...)
+	if err != nil {
+		return nil, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to execute query")
+	}
+
+	return rows, nil
 }
 
 // QueryRow is a wrapper around the sql.Stmt.QueryRowContext method.
@@ -52,7 +57,7 @@ func (s *Store) QueryRow(ctx context.Context, query string, args ...any) (*sql.R
 	stmt, err := s.Prepare(ctx, query)
 
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to prepare query")
 	}
 
 	defer stmt.Close()
@@ -66,12 +71,17 @@ func (s *Store) Exec(ctx context.Context, query string, args ...any) (sql.Result
 	stmt, err := s.Prepare(ctx, query)
 
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to prepare query")
 	}
 
 	defer stmt.Close()
 
-	return stmt.ExecContext(ctx, args...)
+	result, err := stmt.ExecContext(ctx, args...)
+	if err != nil {
+		return nil, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to execute query")
+	}
+
+	return result, nil
 }
 
 // Prepare prepares a new statement with context and returns it.
@@ -86,11 +96,11 @@ func (s *Store) Prepare(ctx context.Context, query string) (*sql.Stmt, error) {
 		}
 
 		slog.Errorf("error while preparing query=%s, err=%v", query, err)
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to prepare statement: query=%s", query)
 	}
 
 	if stmt == nil {
-		return nil, errors.New("empty stmt")
+		return nil, errors.Wrap(errors.ErrDatabaseConnection, errors.ErrorTypeDatabase, "prepared statement is nil")
 	}
 
 	return stmt, nil

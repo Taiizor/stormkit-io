@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/stormkit-io/stormkit-io/src/lib/database"
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/types"
 	"github.com/stormkit-io/stormkit-io/src/lib/utils"
 	"golang.org/x/oauth2"
@@ -33,7 +34,7 @@ func (s *Store) OAuthUser(ID types.ID, conf *oauth2.Config, provider string) (*U
 	row, err := s.QueryRow(context.TODO(), ustmt.selectAuthUser, ID, provider)
 
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to query oauth user with ID=%d provider=%s", ID, provider)
 	}
 
 	err = row.Scan(
@@ -46,7 +47,7 @@ func (s *Store) OAuthUser(ID types.ID, conf *oauth2.Config, provider string) (*U
 			return nil, nil
 		}
 
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to scan oauth user with ID=%d provider=%s", ID, provider)
 	}
 
 	// When there is a personal access token, use that one instead of the access token
@@ -54,7 +55,7 @@ func (s *Store) OAuthUser(ID types.ID, conf *oauth2.Config, provider string) (*U
 		decrypted, err := utils.Decrypt(personalAccessToken)
 
 		if err != nil {
-			return nil, err
+			return nil, errors.Wrapf(err, errors.ErrorTypeInternal, "failed to decrypt personal access token for user ID=%d", ID)
 		}
 
 		u.AccessToken = string(decrypted)
@@ -65,14 +66,14 @@ func (s *Store) OAuthUser(ID types.ID, conf *oauth2.Config, provider string) (*U
 	token, err := conf.TokenSource(context.Background(), u.Token).Token()
 
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeExternal, "failed to refresh oauth token for user ID=%d provider=%s", ID, provider)
 	}
 
 	if !strings.EqualFold(u.Token.AccessToken, token.AccessToken) {
 		u.Token = token
 
 		if err := s.UpsertToken(ID, u); err != nil {
-			return nil, err
+			return nil, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to upsert oauth token for user ID=%d", ID)
 		}
 	}
 
@@ -95,5 +96,9 @@ func (s *Store) UpsertToken(ID types.ID, user *User) error {
 		t.AccessToken, t.RefreshToken, t.TokenType, t.Expiry,
 	)
 
-	return err
+	if err != nil {
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to upsert oauth token for user ID=%d provider=%s", ID, provider)
+	}
+
+	return nil
 }

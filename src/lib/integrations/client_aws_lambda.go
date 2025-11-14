@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
+	stderrors "errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -16,6 +16,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/lambda"
 	"github.com/aws/aws-sdk-go-v2/service/lambda/types"
 	"github.com/stormkit-io/stormkit-io/src/lib/config"
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/slog"
 	sktypes "github.com/stormkit-io/stormkit-io/src/lib/types"
 	"github.com/stormkit-io/stormkit-io/src/lib/utils"
@@ -40,7 +41,7 @@ func (a *AWSClient) Invoke(args InvokeArgs) (*InvokeResult, error) {
 	requestPayload, err := json.Marshal(prepareInvokeRequest(args))
 
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeInternal, "failed to marshal invoke request for function %s", args.ARN)
 	}
 
 	input := &lambda.InvokeInput{
@@ -56,7 +57,7 @@ func (a *AWSClient) Invoke(args InvokeArgs) (*InvokeResult, error) {
 	out, err := a.lambdaClient.Invoke(context.TODO(), input)
 
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeExternal, "failed to invoke Lambda function %s", fnName)
 	}
 
 	if out == nil {
@@ -67,7 +68,7 @@ func (a *AWSClient) Invoke(args InvokeArgs) (*InvokeResult, error) {
 	response := FunctionResponse{}
 
 	if err := json.Unmarshal(out.Payload, &response); err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeInternal, "failed to unmarshal Lambda response payload for function %s", fnName)
 	}
 
 	body := utils.GetString(response.Buffer, response.Body)
@@ -120,7 +121,7 @@ func (a *AWSClient) uploadToLambda(args UploadArgs) (UploadOverview, error) {
 	fileContent, err := os.ReadFile(args.zip)
 
 	if err != nil {
-		return result, err
+		return result, errors.Wrapf(err, errors.ErrorTypeInternal, "failed to read deployment zip file %s", args.zip)
 	}
 
 	s3args := S3Args{
@@ -137,7 +138,7 @@ func (a *AWSClient) uploadToLambda(args UploadArgs) (UploadOverview, error) {
 
 	// Always upload deployment package to s3 to take a backup.
 	if err = a.UploadFile(uploadFile, s3args); err != nil {
-		return result, err
+		return result, errors.Wrapf(err, errors.ErrorTypeExternal, "failed to upload deployment package to S3 bucket %s", s3args.BucketName)
 	}
 
 	version, err := a.createVersion(awsCreateFunctionArgs{
@@ -150,7 +151,7 @@ func (a *AWSClient) uploadToLambda(args UploadArgs) (UploadOverview, error) {
 	if err != nil {
 		var rnf *types.ResourceNotFoundException
 
-		if errors.As(err, &rnf) {
+		if stderrors.As(err, &rnf) {
 			version, err = a.createFunction(awsCreateFunctionArgs{
 				AppID:        args.AppID,
 				FunctionName: arn,
@@ -163,10 +164,10 @@ func (a *AWSClient) uploadToLambda(args UploadArgs) (UploadOverview, error) {
 			})
 
 			if err != nil {
-				return result, err
+				return result, errors.Wrapf(err, errors.ErrorTypeExternal, "failed to create Lambda function %s", arn)
 			}
 		} else {
-			return result, err
+			return result, errors.Wrapf(err, errors.ErrorTypeExternal, "failed to create Lambda version for function %s", arn)
 		}
 	}
 
@@ -242,7 +243,7 @@ func (a *AWSClient) createFunction(opts awsCreateFunctionArgs) (*string, error) 
 	})
 
 	if err != nil || out == nil || out.Version == nil {
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeExternal, "failed to create Lambda function %s with handler %s", opts.FunctionName, opts.HandlerName)
 	}
 
 	return out.Version, nil
@@ -266,7 +267,7 @@ func (a *AWSClient) validRuntime(runtime string) string {
 
 func (a *AWSClient) createVersion(opts awsCreateFunctionArgs) (*string, error) {
 	if err := a.syncHandler(opts); err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeExternal, "failed to sync handler for function %s", opts.FunctionName)
 	}
 
 	out, err := a.lambdaClient.UpdateFunctionCode(context.Background(), &lambda.UpdateFunctionCodeInput{
@@ -282,14 +283,14 @@ func (a *AWSClient) createVersion(opts awsCreateFunctionArgs) (*string, error) {
 		// retry 5 times if there is a resource conflict exception
 		// it usually occurs when the function is still in pending state
 		// and we're trying to access it
-		if errors.As(err, &rce) && opts.resourceRetry < 5 {
+		if stderrors.As(err, &rce) && opts.resourceRetry < 5 {
 			opts.resourceRetry = opts.resourceRetry + 1
 			return a.createVersion(opts)
 		}
 	}
 
 	if err != nil || out == nil || out.Version == nil {
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeExternal, "failed to update Lambda function code for %s", opts.FunctionName)
 	}
 
 	return out.Version, nil
@@ -308,13 +309,13 @@ func (a *AWSClient) syncHandler(args awsCreateFunctionArgs) error {
 	})
 
 	if err != nil {
-		return err
+		return errors.Wrapf(err, errors.ErrorTypeExternal, "failed to get Lambda function configuration for %s", args.FunctionName)
 	}
 
 	// Wait until function is ready in case it's being updated by another deployment.
 	if out != nil {
 		if err := a.waitFunctionConfig(args.FunctionName, out.LastUpdateStatus); err != nil {
-			return err
+			return errors.Wrapf(err, errors.ErrorTypeExternal, "failed to wait for Lambda function %s to be ready", args.FunctionName)
 		}
 	}
 
@@ -326,12 +327,12 @@ func (a *AWSClient) syncHandler(args awsCreateFunctionArgs) error {
 		})
 
 		if err != nil {
-			return err
+			return errors.Wrapf(err, errors.ErrorTypeExternal, "failed to update Lambda function configuration for %s", args.FunctionName)
 		}
 
 		if out != nil {
 			if err := a.waitFunctionConfig(args.FunctionName, out.LastUpdateStatus); err != nil {
-				return err
+				return errors.Wrapf(err, errors.ErrorTypeExternal, "failed to wait for Lambda function %s configuration update", args.FunctionName)
 			}
 		}
 	}
@@ -346,7 +347,9 @@ func (a *AWSClient) waitFunctionConfig(functionName string, lastUpdateStatus typ
 		_, err := waiter.WaitForOutput(context.Background(), &lambda.GetFunctionInput{
 			FunctionName: &functionName,
 		}, 5*time.Minute)
-		return err
+		if err != nil {
+			return errors.Wrapf(err, errors.ErrorTypeExternal, "timeout waiting for Lambda function %s to be ready", functionName)
+		}
 	}
 
 	return nil
