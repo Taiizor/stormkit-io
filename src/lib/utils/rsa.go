@@ -7,8 +7,8 @@ import (
 	"crypto/x509"
 	"database/sql/driver"
 	"encoding/pem"
-	"errors"
 
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/slog"
 	"golang.org/x/crypto/ssh"
 )
@@ -54,7 +54,7 @@ func NewPrivateKeyFromDecryptedBytes(b []byte) (*PrivateKey, error) {
 	pkey := &PrivateKey{}
 
 	if err := pkey.Scan(b); err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, errors.ErrorTypeInternal, "failed to scan private key from bytes")
 	}
 
 	return pkey, nil
@@ -83,7 +83,11 @@ func (pk *PrivateKey) SSHPrivKey() string {
 
 // Encrypt encryptes the private key.
 func (pk *PrivateKey) Encrypt() ([]byte, error) {
-	return Encrypt(pemEncode(pk.PrivateKey))
+	encrypted, err := Encrypt(pemEncode(pk.PrivateKey))
+	if err != nil {
+		return nil, errors.Wrap(err, errors.ErrorTypeInternal, "failed to encrypt private key")
+	}
+	return encrypted, nil
 }
 
 // Value implements database/sql interface.
@@ -99,19 +103,22 @@ func (pk *PrivateKey) Scan(value interface{}) error {
 	key, ok := value.([]byte)
 
 	if !ok {
-		return errors.New("invalid type")
+		return errors.New(errors.ErrorTypeValidation, "invalid type for private key scan: expected []byte")
 	}
 
 	if key, err = Decrypt(key); err != nil {
-		return err
+		return errors.Wrap(err, errors.ErrorTypeInternal, "failed to decrypt private key")
 	}
 
 	if block, err = pemDecode(key); err != nil {
-		return err
+		return errors.Wrap(err, errors.ErrorTypeValidation, "failed to decode PEM block")
 	}
 
 	pk.PrivateKey, err = x509.ParsePKCS1PrivateKey(block.Bytes)
-	return err
+	if err != nil {
+		return errors.Wrap(err, errors.ErrorTypeValidation, "failed to parse PKCS1 private key")
+	}
+	return nil
 }
 
 // pemEncode encodes the given interface into an array of bytes.
@@ -137,7 +144,7 @@ func pemDecode(data []byte) (*pem.Block, error) {
 	pemBlock, _ := pem.Decode(data)
 
 	if pemBlock == nil {
-		return nil, errors.New("pem decode did not yield a valid block. Is the certificate in the right format?")
+		return nil, errors.New(errors.ErrorTypeValidation, "pem decode did not yield a valid block. Is the certificate in the right format?")
 	}
 
 	return pemBlock, nil

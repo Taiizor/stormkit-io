@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path"
 
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/slog"
 	"github.com/stormkit-io/stormkit-io/src/lib/utils/sys"
 )
@@ -72,7 +73,7 @@ func ZipV2(args ZipArgs) error {
 		cmd.Env = envVars()
 
 		if err := cmd.Run(); err != nil {
-			return err
+			return errors.Wrap(err, errors.ErrorTypeInternal, "failed to zip file/directory: "+dirOrFile)
 		}
 	}
 
@@ -83,6 +84,7 @@ func IsZipEmpty(src string) bool {
 	r, err := zip.OpenReader(src)
 
 	if err != nil {
+		_ = errors.Wrap(err, errors.ErrorTypeInternal, "failed to open zip file: "+src)
 		return true
 	}
 
@@ -114,5 +116,9 @@ func Unzip(opts UnzipOpts) error {
 		Stderr: os.Stderr,
 	})
 
-	return cmd.Run()
+	if err := cmd.Run(); err != nil {
+		return errors.Wrap(err, errors.ErrorTypeInternal, "failed to unzip file: "+opts.ZipFile+" to "+opts.ExtractDir)
+	}
+
+	return nil
 }

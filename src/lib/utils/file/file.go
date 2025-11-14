@@ -1,7 +1,7 @@
 package file
 
 import (
-	"errors"
+	stderrors "errors"
 	"io"
 	"io/fs"
 	"mime/multipart"
@@ -10,6 +10,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 )
 
 // File represents an uploaded file.
@@ -31,7 +33,7 @@ func FromRequest(formKey string, r *http.Request) (*File, error) {
 	file, header, err := r.FormFile(formKey)
 
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, errors.ErrorTypeValidation, "failed to get file from form field: "+formKey)
 	}
 
 	return &File{
@@ -54,11 +56,11 @@ func (f *File) WriteContent(src io.Reader) error {
 	buf, err := os.OpenFile(f.Path, os.O_WRONLY|os.O_CREATE, f.Permissions)
 
 	if err != nil {
-		return err
+		return errors.Wrap(err, errors.ErrorTypeInternal, "failed to open file for writing: "+f.Path)
 	}
 
 	if _, err = io.Copy(buf, src); err != nil {
-		return err
+		return errors.Wrap(err, errors.ErrorTypeInternal, "failed to write content to file: "+f.Path)
 	}
 
 	return nil
@@ -71,14 +73,14 @@ func (f *File) SaveToDisk(destination string) error {
 	buf, err := os.OpenFile(f.Path, os.O_WRONLY|os.O_CREATE, f.Permissions)
 
 	if err != nil {
-		return err
+		return errors.Wrap(err, errors.ErrorTypeInternal, "failed to open destination file: "+destination)
 	}
 
 	// Close the buffer when done, and remove the file if copy fails for a reason.
 	defer buf.Close()
 
 	if _, err = io.Copy(buf, f.file); err != nil {
-		return err
+		return errors.Wrap(err, errors.ErrorTypeInternal, "failed to save file to disk: "+destination)
 	}
 
 	return nil
@@ -104,8 +106,8 @@ func CreateFiles(files map[string]string, location string) ([]*File, error) {
 		if strings.Contains(file, "/") {
 			err = os.MkdirAll(filepath.Join(location, filepath.Dir(file)), permissions)
 
-			if err != nil && !errors.Is(err, os.ErrExist) {
-				return nil, err
+			if err != nil && !stderrors.Is(err, os.ErrExist) {
+				return nil, errors.Wrap(err, errors.ErrorTypeInternal, "failed to create directory for file: "+file)
 			}
 		}
 
@@ -113,7 +115,7 @@ func CreateFiles(files map[string]string, location string) ([]*File, error) {
 		err = os.WriteFile(filePath, []byte(content), permissions)
 
 		if err != nil {
-			return nil, err
+			return nil, errors.Wrap(err, errors.ErrorTypeInternal, "failed to write file: "+filePath)
 		}
 
 		ret = append(ret, &File{
@@ -130,10 +132,14 @@ func Copy(src, dest string, mode fs.FileMode) error {
 	data, err := os.ReadFile(src)
 
 	if err != nil {
-		return err
+		return errors.Wrap(err, errors.ErrorTypeInternal, "failed to read source file: "+src)
 	}
 
-	return os.WriteFile(dest, data, mode)
+	if err := os.WriteFile(dest, data, mode); err != nil {
+		return errors.Wrap(err, errors.ErrorTypeInternal, "failed to write destination file: "+dest)
+	}
+
+	return nil
 }
 
 // Symlink creates a new symlink by making use of `ln` command.
@@ -148,7 +154,11 @@ func Symlink(src, dest string, workdir ...string) error {
 	cmd.Stderr = os.Stderr
 	cmd.Env = envVars()
 
-	return cmd.Run()
+	if err := cmd.Run(); err != nil {
+		return errors.Wrap(err, errors.ErrorTypeInternal, "failed to create symlink from "+src+" to "+dest)
+	}
+
+	return nil
 }
 
 // Exists checks whether the given file exists or not.

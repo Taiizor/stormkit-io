@@ -87,7 +87,10 @@ func (s *Store) UserIDsWithoutAPIKeys(ctx context.Context) ([]types.ID, error) {
 	rows, err := s.Query(ctx, stmt.selectUserIDsWithoutAPIKeys)
 
 	if rows == nil || err != nil {
-		return nil, err
+		if err != nil {
+			return nil, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to query user IDs without API keys")
+		}
+		return nil, nil
 	}
 
 	defer rows.Close()
@@ -98,7 +101,7 @@ func (s *Store) UserIDsWithoutAPIKeys(ctx context.Context) ([]types.ID, error) {
 		var id types.ID
 
 		if err := rows.Scan(&id); err != nil {
-			return nil, err
+			return nil, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to scan user ID")
 		}
 
 		ids = append(ids, id)

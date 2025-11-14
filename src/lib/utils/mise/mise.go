@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/rediscache"
 	"github.com/stormkit-io/stormkit-io/src/lib/slog"
 	"github.com/stormkit-io/stormkit-io/src/lib/utils/sys"
@@ -96,7 +97,7 @@ func (m *Mise) InstallMise(ctx context.Context) error {
 	err := cmd.Run()
 
 	if err != nil {
-		return err
+		return errors.Wrap(err, errors.ErrorTypeInternal, "failed to install mise via curl")
 	}
 
 	// Update path so that it supports mise
@@ -115,7 +116,8 @@ func (m *Mise) InstallMise(ctx context.Context) error {
 		})
 
 		if err := cmd.Run(); err != nil {
-			slog.Errorf("error enabling idiomatic version file for %s: %v", runtime, err)
+			wrappedErr := errors.Wrap(err, errors.ErrorTypeInternal, "failed to enable idiomatic version file for: "+runtime)
+			slog.Errorf("error enabling idiomatic version file for %s: %v", runtime, wrappedErr)
 			continue
 		}
 	}
@@ -136,11 +138,11 @@ func (m *Mise) InstallGlobal(ctx context.Context, runtime string) (string, error
 	trimmed := strings.TrimSpace(string(output))
 
 	if err != nil {
-		return trimmed, fmt.Errorf("error installing runtime %s: %v", runtime, err)
+		return trimmed, errors.Wrap(err, errors.ErrorTypeInternal, "failed to install runtime: "+runtime)
 	}
 
 	if err := m.updatePath(ctx, ""); err != nil {
-		return trimmed, err
+		return trimmed, errors.Wrap(err, errors.ErrorTypeInternal, "failed to update PATH after installing runtime: "+runtime)
 	}
 
 	return trimmed, nil
@@ -175,11 +177,11 @@ func (m *Mise) InstallLocal(ctx context.Context, opts LocalOpts) error {
 	})
 
 	if err := cmd.Run(); err != nil {
-		return err
+		return errors.Wrap(err, errors.ErrorTypeInternal, "failed to install mise locally in directory: "+opts.Dir)
 	}
 
 	if err := m.updatePath(ctx, opts.Dir); err != nil {
-		return err
+		return errors.Wrap(err, errors.ErrorTypeInternal, "failed to update PATH after local mise install in: "+opts.Dir)
 	}
 
 	return nil
@@ -254,7 +256,7 @@ func (m *Mise) updatePath(ctx context.Context, dir string) error {
 	data, err := cmd.Output()
 
 	if err != nil {
-		return err
+		return errors.Wrap(err, errors.ErrorTypeInternal, "failed to get mise bin paths")
 	}
 
 	paths := strings.Split(strings.TrimSpace(string(data)), "\n")
@@ -304,13 +306,13 @@ func (m *Mise) Version() (string, error) {
 	output, err := cmd.Output()
 
 	if err != nil {
-		return "", fmt.Errorf("error getting mise version: %v", err)
+		return "", errors.Wrap(err, errors.ErrorTypeInternal, "failed to get mise version")
 	}
 
 	vo := VersionOutput{}
 
 	if err := json.Unmarshal(output, &vo); err != nil {
-		return "", fmt.Errorf("error parsing mise version output: %v", err)
+		return "", errors.Wrap(err, errors.ErrorTypeValidation, "failed to parse mise version output")
 	}
 
 	return vo.Version, nil
@@ -326,7 +328,7 @@ func (m *Mise) SelfUpdate(ctx context.Context) error {
 
 	if err != nil {
 		slog.Errorf("mise self-update output: %s, err: %s", string(output), err.Error())
-		return err
+		return errors.Wrap(err, errors.ErrorTypeInternal, "failed to update mise")
 	}
 
 	return nil
@@ -339,7 +341,11 @@ func (m *Mise) Prune(ctx context.Context) error {
 		Dir:    os.Getenv("HOME"),
 	})
 
-	return cmd.Run()
+	if err := cmd.Run(); err != nil {
+		return errors.Wrap(err, errors.ErrorTypeInternal, "failed to prune mise installations")
+	}
+
+	return nil
 }
 
 // AutoUpdate is a job that triggers the automatic update of mise.

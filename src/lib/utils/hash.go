@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/types"
 )
 
@@ -43,6 +44,7 @@ func StringToID(id string) types.ID {
 	idInt, err := strconv.ParseInt(id, 10, 64)
 
 	if err != nil {
+		_ = errors.Wrap(err, errors.ErrorTypeValidation, "failed to parse ID from string: "+id)
 		return 0
 	}
 

@@ -128,7 +128,7 @@ func (s *Store) APIKey(ctx context.Context, token string) (*Token, error) {
 	row, err := s.QueryRow(ctx, stmt.selectAPIKey, token)
 
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to query API key by token")
 	}
 
 	err = row.Scan(
@@ -140,7 +140,11 @@ func (s *Store) APIKey(ctx context.Context, token string) (*Token, error) {
 		return nil, nil
 	}
 
-	return key, err
+	if err != nil {
+		return nil, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to scan API key")
+	}
+
+	return key, nil
 }
 
 // APIKeys returns the API keys associated with this app.
@@ -149,7 +153,7 @@ func (s *Store) APIKeyByID(ctx context.Context, keyID types.ID) (*Token, error) 
 	row, err := s.QueryRow(ctx, stmt.selectAPIKeyByID, keyID)
 
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to query API key by id=%d", keyID)
 	}
 
 	err = row.Scan(
@@ -161,13 +165,17 @@ func (s *Store) APIKeyByID(ctx context.Context, keyID types.ID) (*Token, error) 
 		return nil, nil
 	}
 
-	return key, err
+	if err != nil {
+		return nil, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to scan API key for id=%d", keyID)
+	}
+
+	return key, nil
 }
 
 // AddAPIKey sets the API token for the given app id.
 func (s *Store) AddAPIKey(ctx context.Context, key *Token) error {
 	if !IsScopeValid(key.Scope) {
-		return fmt.Errorf("scope is invalid")
+		return errors.New(errors.ErrorTypeValidation, "scope is invalid").WithContext("scope", key.Scope)
 	}
 
 	usrID := null.NewInt(int64(key.UserID), key.UserID != 0)
@@ -188,13 +196,19 @@ func (s *Store) AddAPIKey(ctx context.Context, key *Token) error {
 	)
 
 	if err != nil {
-		return err
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to insert API key for scope=%s", key.Scope)
 	}
 
-	return row.Scan(&key.ID)
+	if err := row.Scan(&key.ID); err != nil {
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to scan API key ID for scope=%s", key.Scope)
+	}
+	return nil
 }
 
 func (s *Store) RemoveAPIKey(ctx context.Context, keyID types.ID) error {
 	_, err := s.Exec(ctx, stmt.removeAPIKey, keyID)
-	return err
+	if err != nil {
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to remove API key with id=%d", keyID)
+	}
+	return nil
 }
