@@ -16,6 +16,7 @@ import (
 	jobs "github.com/stormkit-io/stormkit-io/src/ce/workerserver"
 	"github.com/stormkit-io/stormkit-io/src/ee/api/analytics"
 	"github.com/stormkit-io/stormkit-io/src/lib/config"
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/html"
 	"github.com/stormkit-io/stormkit-io/src/lib/integrations"
 	"github.com/stormkit-io/stormkit-io/src/lib/rediscache"
@@ -337,7 +338,12 @@ func (r *RequestServer) Error(requestErr error) *shttp.Response {
 		DeploymentID: cnf.DeploymentID,
 	})
 
-	if err != nil || file == nil {
+	if err != nil {
+		slog.Errorf("failed to fetch custom error file: %v", errors.Wrapf(err, errors.ErrorTypeExternal, "cannot get error file=%s deployment_id=%d", customErrorFile.FileName, cnf.DeploymentID))
+		return r.res
+	}
+
+	if file == nil {
 		return r.res
 	}
 
@@ -387,7 +393,12 @@ func (r *RequestServer) NotFound() *shttp.Response {
 		DeploymentID: cnf.DeploymentID,
 	})
 
-	if err != nil || file == nil {
+	if err != nil {
+		slog.Errorf("failed to fetch custom 404 file: %v", errors.Wrapf(err, errors.ErrorTypeExternal, "cannot get 404 file=%s deployment_id=%d", customNotFound.FileName, cnf.DeploymentID))
+		return r.NotFoundBuiltIn()
+	}
+
+	if file == nil {
 		return r.NotFoundBuiltIn()
 	}
 

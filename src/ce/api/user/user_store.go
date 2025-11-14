@@ -5,7 +5,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"reflect"
 	"strconv"
@@ -22,6 +21,7 @@ import (
 	"github.com/stormkit-io/stormkit-io/src/lib/config"
 	"github.com/stormkit-io/stormkit-io/src/lib/database"
 	"github.com/stormkit-io/stormkit-io/src/lib/discord"
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/slog"
 	"github.com/stormkit-io/stormkit-io/src/lib/types"
 	"github.com/stormkit-io/stormkit-io/src/lib/utils"
@@ -91,12 +91,12 @@ func (s *Store) selectUsers(ctx context.Context, query string, params ...any) ([
 		)
 
 		if err != nil {
-			return nil, err
+			return nil, errors.Wrap(err, errors.ErrorTypeDatabase, "failed to scan user row")
 		}
 
 		if emails != nil {
 			if err := json.Unmarshal(emails, &user.Emails); err != nil {
-				return nil, err
+				return nil, errors.Wrapf(err, errors.ErrorTypeInternal, "failed to unmarshal user emails for user_id=%d", user.ID)
 			}
 		}
 
@@ -124,13 +124,17 @@ func (s *Store) UserByID(userID types.ID) (*User, error) {
 	}
 
 	if err := s.selectTmpl.Execute(&wr, data); err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeInternal, "failed to execute template for user_id=%d", userID)
 	}
 
 	users, err := s.selectUsers(context.TODO(), wr.String(), userID)
 
-	if err != nil || len(users) == 0 {
-		return nil, err
+	if err != nil {
+		return nil, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to fetch user with user_id=%d", userID)
+	}
+
+	if len(users) == 0 {
+		return nil, errors.New(errors.ErrorTypeNotFound, "user not found").WithContext("user_id", userID)
 	}
 
 	return users[0], nil
@@ -154,13 +158,17 @@ func (s *Store) TeamOwner(teamID types.ID) (*User, error) {
 	}
 
 	if err := s.selectTmpl.Execute(&wr, data); err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeInternal, "failed to execute template for team_id=%d", teamID)
 	}
 
 	users, err := s.selectUsers(context.TODO(), wr.String(), teamID)
 
-	if err != nil || len(users) == 0 {
-		return nil, err
+	if err != nil {
+		return nil, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to fetch team owner for team_id=%d", teamID)
+	}
+
+	if len(users) == 0 {
+		return nil, errors.New(errors.ErrorTypeNotFound, "team owner not found").WithContext("team_id", teamID)
 	}
 
 	return users[0], nil
@@ -182,7 +190,7 @@ func (s *Store) UserByEmail(ctx context.Context, emails []string) (*User, error)
 	}
 
 	if err := s.selectTmpl.Execute(&wr, data); err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, errors.ErrorTypeInternal, "failed to execute template for user email query")
 	}
 
 	params := []any{}
@@ -193,8 +201,12 @@ func (s *Store) UserByEmail(ctx context.Context, emails []string) (*User, error)
 
 	users, err := s.selectUsers(context.TODO(), wr.String(), params...)
 
-	if err != nil || len(users) == 0 {
-		return nil, err
+	if err != nil {
+		return nil, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to fetch user by emails: %v", emails)
+	}
+
+	if len(users) == 0 {
+		return nil, errors.New(errors.ErrorTypeNotFound, "user not found").WithContext("emails", emails)
 	}
 
 	return users[0], nil
@@ -248,18 +260,22 @@ func (s *Store) LicenseByToken(ctx context.Context, token string) (*admin.Licens
 	pieces := strings.SplitN(token, ":", 2)
 
 	if len(pieces) != 2 {
-		return nil, errors.New("invalid-token")
+		return nil, errors.New(errors.ErrorTypeValidation, "invalid license token format")
 	}
 
 	userID, key := utils.StringToID(pieces[0]), pieces[1]
 	license, err := s.LicenseByUserID(ctx, userID)
 
-	if err != nil || license == nil {
-		return nil, err
+	if err != nil {
+		return nil, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to fetch license for user_id=%d", userID)
+	}
+
+	if license == nil {
+		return nil, errors.New(errors.ErrorTypeNotFound, "license not found").WithContext("user_id", userID)
 	}
 
 	if license.Key != key {
-		return nil, errors.New("invalid-token")
+		return nil, errors.New(errors.ErrorTypeAuthentication, "license key mismatch").WithContext("user_id", userID)
 	}
 
 	return license, nil
@@ -503,12 +519,12 @@ func (s *Store) MustUser(authUser *oauth.User) (*User, error) {
 			license := admin.CurrentLicense()
 
 			if license.IsEnterprise() && int64(license.Seats) <= count {
-				return nil, errors.New("seats-full")
+				return nil, errors.New(errors.ErrorTypeAuthorization, "seats-full")
 			}
 
 			switch admin.MustConfig().SignUpMode() {
 			case admin.SIGNUP_MODE_OFF:
-				return nil, errors.New("new-users-not-allowed")
+				return nil, errors.New(errors.ErrorTypeAuthorization, "new-users-not-allowed")
 			case admin.SIGNUP_MODE_WAITLIST:
 				// TODO: Check if user email is in the whitelist
 				signUpStatus = null.Bool{}

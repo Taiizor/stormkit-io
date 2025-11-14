@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/lib/pq"
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/slog"
 )
 
@@ -69,15 +70,26 @@ func NewConnection() *sql.DB {
 
 	for retry := 0; retry < maxRetry; retry++ {
 		if db, err := newConnectionWithConfig(Config); err != nil {
-			slog.Info("retrying in 5 seconds:", retry)
+			wrappedErr := errors.Wrapf(
+				err,
+				errors.ErrorTypeDatabase,
+				"database connection attempt %d/%d failed for host=%s db=%s",
+				retry+1,
+				maxRetry,
+				Config.Host,
+				Config.DBName,
+			)
+			slog.Errorf("retrying in 5 seconds: %v", wrappedErr)
 			time.Sleep(5 * time.Second)
-			dbconnerr = err
+			dbconnerr = wrappedErr
 		} else {
 			return db
 		}
 	}
 
-	slog.Errorf("[database.NewConnection]: %s", dbconnerr.Error())
+	if dbconnerr != nil {
+		slog.Errorf("[database.NewConnection] all connection attempts exhausted: %v", dbconnerr)
+	}
 	return nil
 }
 
@@ -96,7 +108,13 @@ func newConnectionWithConfig(cfg DBConf) (*sql.DB, error) {
 	db, err := sql.Open("postgres", ConnectionString(cfg))
 
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(
+			err,
+			errors.ErrorTypeDatabase,
+			"failed to open database connection for db=%s host=%s",
+			cfg.DBName,
+			cfg.Host,
+		)
 	}
 
 	db.SetConnMaxLifetime(cfg.MaxLifetime)
@@ -104,7 +122,14 @@ func newConnectionWithConfig(cfg DBConf) (*sql.DB, error) {
 	db.SetMaxIdleConns(cfg.MaxIdleConns)
 
 	if err = db.Ping(); err != nil {
-		return nil, err
+		return nil, errors.Wrapf(
+			err,
+			errors.ErrorTypeDatabase,
+			"failed to ping database for db=%s host=%s schema=%s",
+			cfg.DBName,
+			cfg.Host,
+			cfg.Schema,
+		)
 	}
 
 	slog.Infof("pinged successfully %s", cfg.Schema)

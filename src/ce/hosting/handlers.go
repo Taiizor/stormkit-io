@@ -1,7 +1,7 @@
 package hosting
 
 import (
-	"errors"
+	stderrors "errors"
 	"net/http"
 	"os"
 	"path"
@@ -10,6 +10,7 @@ import (
 
 	"github.com/stormkit-io/stormkit-io/src/ce/api/admin"
 	"github.com/stormkit-io/stormkit-io/src/ce/api/router"
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/shttp"
 	"github.com/stormkit-io/stormkit-io/src/lib/slog"
 	"go.uber.org/zap"
@@ -181,13 +182,19 @@ func uiHandler() http.Handler {
 		file, err := os.Open(absFileName)
 
 		// Fallback to index.html
-		if err != nil && errors.Is(err, os.ErrNotExist) {
+		if err != nil && stderrors.Is(err, os.ErrNotExist) {
 			absFileName = "/shared/ui/index.html"
 			file, err = os.Open(absFileName)
 
-			if err != nil && errors.Is(err, os.ErrNotExist) {
+			if err != nil && stderrors.Is(err, os.ErrNotExist) {
+				slog.Errorf("ui file not found: %v", errors.Wrap(err, errors.ErrorTypeInternal, "index.html not found in /shared/ui"))
 				return shttp.NotFound()
 			}
+		}
+
+		if err != nil {
+			slog.Errorf("failed to open ui file: %v", errors.Wrapf(err, errors.ErrorTypeInternal, "cannot open file=%s", absFileName))
+			return shttp.NotFound()
 		}
 
 		if absFileName == "/shared/ui/index.html" {
@@ -197,6 +204,7 @@ func uiHandler() http.Handler {
 		fileInfo, err := os.Stat(absFileName)
 
 		if err != nil {
+			slog.Errorf("failed to stat ui file: %v", errors.Wrapf(err, errors.ErrorTypeInternal, "cannot stat file=%s", absFileName))
 			return shttp.NotFound()
 		}
 
@@ -205,7 +213,7 @@ func uiHandler() http.Handler {
 			Headers: headers,
 			BeforeClose: func() {
 				if err := file.Close(); err != nil {
-					slog.Errorf("error while closing file: %s", err.Error())
+					slog.Errorf("error while closing file: %v", errors.Wrapf(err, errors.ErrorTypeInternal, "failed to close file=%s", absFileName))
 				}
 			},
 			ServeContent: &shttp.ServeContent{
