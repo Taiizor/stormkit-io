@@ -304,7 +304,7 @@ func (s *DStore) DeleteDomain(ctx context.Context, args DeleteDomainArgs) error 
 	}
 
 	if where == "" {
-		return errors.New("invalid argument received: expecting one of domain_id, env_id or app_id fields")
+		return errors.New(errors.ErrorTypeValidation, "invalid argument received: expecting one of domain_id, env_id or app_id fields")
 	}
 
 	data := map[string]any{

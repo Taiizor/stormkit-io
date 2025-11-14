@@ -2,6 +2,7 @@ package rediscache
 
 import (
 	"context"
+	stderrors "errors"
 	"io"
 	"net"
 	"strings"
@@ -81,13 +82,13 @@ func IsConnectionError(err error) bool {
 		return false
 	}
 
-	if errors.Is(err, redis.ErrClosed) || errors.Is(err, io.EOF) {
+	if stderrors.Is(err, redis.ErrClosed) || stderrors.Is(err, io.EOF) {
 		return true
 	}
 
 	var netErr net.Error
 
-	if errors.As(err, &netErr) {
+	if stderrors.As(err, &netErr) {
 		return true
 	}
 

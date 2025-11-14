@@ -3,7 +3,7 @@ package integrations
 import (
 	"bytes"
 	"context"
-	sterrors "errors"
+	stderrors "errors"
 	"fmt"
 	"io"
 	"os"
@@ -36,7 +36,7 @@ func (a *AWSClient) getFile(args GetFileArgs) (*GetFileResult, error) {
 	if err != nil {
 		var nsk *s3types.NoSuchKey
 
-		if sterrors.As(err, &nsk) {
+		if stderrors.As(err, &nsk) {
 			return nil, nil
 		}
 

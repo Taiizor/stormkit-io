@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	stderrors "errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -228,11 +229,11 @@ func (c *FilesysClient) uploadZip(args UploadArgs, to string) (UploadOverview, e
 	fstat, err := os.Stat(args.zip)
 
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
+		if stderrors.Is(err, os.ErrNotExist) {
 			return UploadOverview{}, nil
 		}
 
-		return UploadOverview{}, err
+		return UploadOverview{}, errors.Wrapf(err, errors.ErrorTypeInternal, "failed to stat file %s", args.zip)
 	}
 
 	unzipOpts := file.UnzipOpts{

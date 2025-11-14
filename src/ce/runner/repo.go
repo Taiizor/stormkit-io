@@ -214,7 +214,7 @@ func (r Repo) createSSHKeys() error {
 	pieces := strings.Split(string(creds), "|")
 
 	if len(pieces) < 2 {
-		return errors.New("invalid access token given")
+		return errors.New(errors.ErrorTypeValidation, "invalid access token given")
 	}
 
 	_, publicKey, privateKey := pieces[0], pieces[1], pieces[2]
