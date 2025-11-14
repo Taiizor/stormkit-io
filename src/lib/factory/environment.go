@@ -7,6 +7,7 @@ import (
 	"github.com/stormkit-io/stormkit-io/src/ce/api/app/apikey"
 	"github.com/stormkit-io/stormkit-io/src/ce/api/app/buildconf"
 	"github.com/stormkit-io/stormkit-io/src/lib/database/databasetest"
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/utils"
 )
 
@@ -24,7 +25,7 @@ func (e MockEnv) Insert(conn databasetest.TestDB) error {
 		data, err = json.Marshal(e.Data)
 
 		if err != nil {
-			return err
+			return errors.Wrap(err, errors.ErrorTypeInternal, "failed to marshal env data")
 		}
 	}
 
@@ -32,7 +33,7 @@ func (e MockEnv) Insert(conn databasetest.TestDB) error {
 		mailer, err = json.Marshal(e.Mailer)
 
 		if err != nil {
-			return err
+			return errors.Wrap(err, errors.ErrorTypeInternal, "failed to marshal mailer config")
 		}
 	}
 

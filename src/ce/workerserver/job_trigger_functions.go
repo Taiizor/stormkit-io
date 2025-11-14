@@ -10,6 +10,7 @@ import (
 	"github.com/adhocore/gronx"
 	"github.com/hibiken/asynq"
 	"github.com/stormkit-io/stormkit-io/src/ce/api/app/functiontrigger"
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/shttp"
 	"github.com/stormkit-io/stormkit-io/src/lib/slog"
 	"github.com/stormkit-io/stormkit-io/src/lib/tasks"
@@ -32,8 +33,9 @@ func InvokeDueFunctionTriggers(ctx context.Context) error {
 	tfs, err := functiontrigger.NewStore().DueTriggers(ctx)
 
 	if err != nil {
-		slog.Errorf("error while selecting due function trigger: %v", err)
-		return err
+		wrappedErr := errors.Wrap(err, errors.ErrorTypeDatabase, "failed to fetch due triggers")
+		slog.Errorf("error while selecting due function trigger: %v", wrappedErr)
+		return wrappedErr
 	}
 
 	messages := []FunctionTriggerMessage{}
@@ -42,7 +44,8 @@ func InvokeDueFunctionTriggers(ctx context.Context) error {
 		nextRunAt, err := gronx.NextTickAfter(tf.Cron, time.Now().UTC(), false)
 
 		if err != nil {
-			slog.Errorf("error while calculating next tick: %s", err.Error())
+			wrappedErr := errors.Wrap(err, errors.ErrorTypeInternal, "failed to calculate next tick").WithMetadata("cron", tf.Cron).WithMetadata("triggerID", tf.ID.String())
+			slog.Errorf("error while calculating next tick: %s", wrappedErr.Error())
 		}
 
 		messages = append(messages, FunctionTriggerMessage{
@@ -60,8 +63,9 @@ func InvokeDueFunctionTriggers(ctx context.Context) error {
 	}
 
 	if _, err := tasks.Enqueue(ctx, tasks.TriggerFunctionHttp, messages, nil); err != nil {
-		slog.Errorf("error occurred while enqueuing task %s", err.Error())
-		return err
+		wrappedErr := errors.Wrap(err, errors.ErrorTypeInternal, "failed to enqueue trigger task").WithMetadata("messagesCount", len(messages))
+		slog.Errorf("error occurred while enqueuing task %s", wrappedErr.Error())
+		return wrappedErr
 	}
 
 	return nil
@@ -72,8 +76,9 @@ func HandleFunctionTrigger(ctx context.Context, t *asynq.Task) error {
 	tfs := []FunctionTriggerMessage{}
 
 	if err := json.Unmarshal(t.Payload(), &tfs); err != nil {
-		slog.Errorf("HandleTriggerFunction cannot unmarshal payload information: %v", err)
-		return err
+		wrappedErr := errors.Wrap(err, errors.ErrorTypeInternal, "failed to unmarshal trigger payload")
+		slog.Errorf("HandleTriggerFunction cannot unmarshal payload information: %v", wrappedErr)
+		return wrappedErr
 	}
 
 	logs := []functiontrigger.TriggerLog{}
@@ -112,7 +117,8 @@ func HandleFunctionTrigger(ctx context.Context, t *asynq.Task) error {
 		})
 
 		if err != nil {
-			slog.Errorf("trigger function request failed %v", err)
+			wrappedErr := errors.Wrap(err, errors.ErrorTypeExternal, "trigger function request failed").WithMetadata("url", tf.URL).WithMetadata("triggerID", tf.ID.String())
+			slog.Errorf("trigger function request failed %v", wrappedErr)
 			continue
 		}
 
@@ -122,11 +128,13 @@ func HandleFunctionTrigger(ctx context.Context, t *asynq.Task) error {
 	store := functiontrigger.NewStore()
 
 	if err := store.InsertLogs(ctx, logs); err != nil {
-		slog.Errorf("error while inserting function trigger logs: %s", err.Error())
+		wrappedErr := errors.Wrap(err, errors.ErrorTypeDatabase, "failed to insert trigger logs").WithMetadata("logsCount", len(logs))
+		slog.Errorf("error while inserting function trigger logs: %s", wrappedErr.Error())
 	}
 
 	if err := store.SetNextRunAt(ctx, updates); err != nil {
-		slog.Errorf("error while inserting function trigger batch updates: %s", err.Error())
+		wrappedErr := errors.Wrap(err, errors.ErrorTypeDatabase, "failed to update next run times").WithMetadata("updatesCount", len(updates))
+		slog.Errorf("error while inserting function trigger batch updates: %s", wrappedErr.Error())
 	}
 
 	return nil

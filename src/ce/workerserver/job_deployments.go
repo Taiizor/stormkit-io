@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/stormkit-io/stormkit-io/src/lib/config"
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/integrations"
 	"github.com/stormkit-io/stormkit-io/src/lib/slog"
 	"github.com/stormkit-io/stormkit-io/src/lib/types"
@@ -30,7 +31,7 @@ func RemoveDeploymentArtifactsManually(ctx context.Context, numberOfDays int) ([
 	deployments, err := store.DeploymentsOlderThan30Days(ctx, numberOfDays, limit)
 
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, errors.ErrorTypeDatabase, "failed to fetch old deployments").WithMetadata("numberOfDays", numberOfDays).WithMetadata("limit", limit)
 	}
 
 	if len(deployments) == 0 {
@@ -49,7 +50,8 @@ func RemoveDeploymentArtifactsManually(ctx context.Context, numberOfDays int) ([
 		}
 
 		if err := client.DeleteArtifacts(ctx, args); err != nil {
-			slog.Errorf("error while deleting artifact: %s", err.Error())
+			wrappedErr := errors.Wrap(err, errors.ErrorTypeExternal, "failed to delete artifacts").WithMetadata("deploymentID", d.ID.String())
+			slog.Errorf("error while deleting artifact: %s", wrappedErr.Error())
 			continue
 		}
 
@@ -58,8 +60,9 @@ func RemoveDeploymentArtifactsManually(ctx context.Context, numberOfDays int) ([
 	}
 
 	if err = store.MarkDeploymentArtifactsDeleted(ctx, idsToBeMarked); err != nil {
+		wrappedErr := errors.Wrap(err, errors.ErrorTypeDatabase, "failed to mark artifacts as deleted").WithMetadata("idsCount", len(idsToBeMarked))
 		slog.Errorf("error while marking artifacts deleted: %s", strings.Join(idsToBeMarkedStr, ", "))
-		return nil, err
+		return nil, wrappedErr
 	}
 
 	return idsToBeMarkedStr, nil

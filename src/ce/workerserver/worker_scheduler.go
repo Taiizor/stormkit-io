@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/go-co-op/gocron/v2"
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/slog"
 )
 
@@ -38,8 +39,9 @@ func NewScheduler() (*Scheduler, error) {
 	s, err := gocron.NewScheduler()
 
 	if err != nil {
-		slog.Errorf("error while starting scheduler: %s", err)
-		return nil, err
+		wrappedErr := errors.Wrap(err, errors.ErrorTypeInternal, "failed to create scheduler")
+		slog.Errorf("error while starting scheduler: %s", wrappedErr)
+		return nil, wrappedErr
 	}
 
 	return &Scheduler{
@@ -112,7 +114,8 @@ func (s *Scheduler) registerTasks(ctx context.Context, tasks []TaskDefinition) [
 		job, err := s.scheduler.NewJob(task.Def, gocron.NewTask(task.Handler, ctx), task.Opt...)
 
 		if err != nil {
-			slog.Errorf("error while registering job: %s", err.Error())
+			wrappedErr := errors.Wrap(err, errors.ErrorTypeInternal, "failed to register job")
+			slog.Errorf("error while registering job: %s", wrappedErr.Error())
 		} else {
 			registeredTasks = append(registeredTasks, job)
 		}

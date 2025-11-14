@@ -9,6 +9,7 @@ import (
 	"github.com/stormkit-io/stormkit-io/src/ee/api/team"
 	"github.com/stormkit-io/stormkit-io/src/lib/config"
 	"github.com/stormkit-io/stormkit-io/src/lib/database/databasetest"
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/types"
 	"github.com/stormkit-io/stormkit-io/src/lib/utils"
 	"gopkg.in/guregu/null.v3"
@@ -27,7 +28,7 @@ func (u *MockUser) Insert(conn databasetest.TestDB) error {
 		t, err := time.Parse(time.DateTime, "2019-02-26 15:00:00")
 
 		if err != nil {
-			return err
+			return errors.Wrap(err, errors.ErrorTypeInternal, "failed to parse user creation time")
 		}
 
 		u.CreatedAt = utils.Unix{

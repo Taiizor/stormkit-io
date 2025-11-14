@@ -7,6 +7,7 @@ import (
 	"text/template"
 
 	"github.com/lib/pq"
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/slog"
 )
 
@@ -40,8 +41,9 @@ func SyncAnalyticsVisitorsDaily(ctx context.Context) error {
 		tmpl, err := template.New("syncAnalytics").Parse(stmt.syncAnalyticsVisitors)
 
 		if err != nil {
-			slog.Errorf("cannot parse syncAnalytics template: %s", err.Error())
-			return err
+			wrappedErr := errors.Wrap(err, errors.ErrorTypeInternal, "failed to parse analytics template")
+			slog.Errorf("cannot parse syncAnalytics template: %s", wrappedErr.Error())
+			return wrappedErr
 		}
 
 		var qb strings.Builder
@@ -53,14 +55,16 @@ func SyncAnalyticsVisitorsDaily(ctx context.Context) error {
 		}
 
 		if err := tmpl.Execute(&qb, data); err != nil {
-			slog.Errorf("error executing query template: %s", err.Error())
-			return err
+			wrappedErr := errors.Wrap(err, errors.ErrorTypeInternal, "failed to execute analytics template").WithMetadata("statusCode", statusCode)
+			slog.Errorf("error executing query template: %s", wrappedErr.Error())
+			return wrappedErr
 		}
 
 		_, err = store.Exec(ctx, qb.String(), pq.Array(params))
 
 		if err != nil {
-			slog.Errorf("could not sync visitors data: %s", err.Error())
+			wrappedErr := errors.Wrap(err, errors.ErrorTypeDatabase, "failed to sync visitors data").WithMetadata("statusCode", statusCode).WithMetadata("days", days)
+			slog.Errorf("could not sync visitors data: %s", wrappedErr.Error())
 		}
 	}
 
@@ -79,8 +83,9 @@ func SyncAnalyticsVisitorsHourly(ctx context.Context) error {
 		tmpl, err := template.New("syncAnalytics").Parse(stmt.syncAnalyticsVisitors)
 
 		if err != nil {
-			slog.Errorf("cannot parse syncAnalytics template: %s", err.Error())
-			return err
+			wrappedErr := errors.Wrap(err, errors.ErrorTypeInternal, "failed to parse analytics template")
+			slog.Errorf("cannot parse syncAnalytics template: %s", wrappedErr.Error())
+			return wrappedErr
 		}
 
 		var qb strings.Builder
@@ -92,14 +97,16 @@ func SyncAnalyticsVisitorsHourly(ctx context.Context) error {
 		}
 
 		if err := tmpl.Execute(&qb, data); err != nil {
-			slog.Errorf("error executing query template: %s", err.Error())
-			return err
+			wrappedErr := errors.Wrap(err, errors.ErrorTypeInternal, "failed to execute analytics template").WithMetadata("statusCode", statusCode)
+			slog.Errorf("error executing query template: %s", wrappedErr.Error())
+			return wrappedErr
 		}
 
 		_, err = store.Exec(ctx, qb.String(), pq.Array(params))
 
 		if err != nil {
-			slog.Errorf("could not sync visitors data: %s", err.Error())
+			wrappedErr := errors.Wrap(err, errors.ErrorTypeDatabase, "failed to sync hourly visitors data").WithMetadata("statusCode", statusCode)
+			slog.Errorf("could not sync visitors data: %s", wrappedErr.Error())
 		}
 	}
 
@@ -110,7 +117,9 @@ func SyncAnalyticsReferrers(ctx context.Context) error {
 	_, err := NewStore().Exec(ctx, stmt.syncAnalyticsReferrers)
 
 	if err != nil {
-		slog.Errorf("could not sync referrers data: %s", err.Error())
+		wrappedErr := errors.Wrap(err, errors.ErrorTypeDatabase, "failed to sync referrers data")
+		slog.Errorf("could not sync referrers data: %s", wrappedErr.Error())
+		return wrappedErr
 	}
 
 	return err
@@ -120,7 +129,9 @@ func SyncAnalyticsByCountries(ctx context.Context) error {
 	_, err := NewStore().Exec(ctx, stmt.syncAnalyticsCountries)
 
 	if err != nil {
-		slog.Errorf("could not sync countries data: %s", err.Error())
+		wrappedErr := errors.Wrap(err, errors.ErrorTypeDatabase, "failed to sync countries data")
+		slog.Errorf("could not sync countries data: %s", wrappedErr.Error())
+		return wrappedErr
 	}
 
 	return err

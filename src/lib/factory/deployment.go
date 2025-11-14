@@ -9,6 +9,7 @@ import (
 	"github.com/stormkit-io/stormkit-io/src/ce/api/app/buildconf"
 	"github.com/stormkit-io/stormkit-io/src/ce/api/app/deploy"
 	"github.com/stormkit-io/stormkit-io/src/lib/database/databasetest"
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/types"
 	"github.com/stormkit-io/stormkit-io/src/lib/utils"
 )
@@ -99,7 +100,8 @@ func (f *Factory) MockDeployment(env *MockEnv, overwrites ...map[string]any) *Mo
 	snapshot, err := json.Marshal(conf)
 
 	if err != nil {
-		panic(fmt.Sprintf("error while marshaling env data: %v", err))
+		wrappedErr := errors.Wrap(err, errors.ErrorTypeInternal, "failed to marshal deployment config")
+		panic(fmt.Sprintf("error while marshaling env data: %v", wrappedErr))
 	}
 
 	depl := &deploy.Deployment{

@@ -11,6 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/stormkit-io/stormkit-io/src/ce/api/admin"
 	"github.com/stormkit-io/stormkit-io/src/ce/api/app/buildconf"
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/shttp"
 	"github.com/stormkit-io/stormkit-io/src/lib/utils"
 )
@@ -27,7 +28,7 @@ func PingDomains(ctx context.Context) error {
 	cfg, err := admin.Store().Config(ctx)
 
 	if err != nil {
-		return err
+		return errors.Wrap(err, errors.ErrorTypeDatabase, "failed to fetch config")
 	}
 
 	mod := 5
@@ -51,7 +52,7 @@ func PingDomains(ctx context.Context) error {
 	})
 
 	if err != nil {
-		return err
+		return errors.Wrap(err, errors.ErrorTypeDatabase, "failed to fetch domains").WithMetadata("modID", modID)
 	}
 
 	domainsLen := len(domains)
@@ -133,7 +134,7 @@ func PingDomains(ctx context.Context) error {
 	}
 
 	if err := buildconf.DomainStore().UpdateLastPing(ctx, pingResults); err != nil {
-		return err
+		return errors.Wrap(err, errors.ErrorTypeDatabase, "failed to update last ping").WithMetadata("resultsCount", len(pingResults))
 	}
 
 	return nil

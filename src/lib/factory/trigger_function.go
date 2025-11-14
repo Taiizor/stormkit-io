@@ -6,6 +6,7 @@ import (
 
 	"github.com/stormkit-io/stormkit-io/src/ce/api/app/functiontrigger"
 	"github.com/stormkit-io/stormkit-io/src/lib/database/databasetest"
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/utils"
 )
 
@@ -18,7 +19,7 @@ func (tf MockFunctionTrigger) Insert(conn databasetest.TestDB) error {
 	opts, err := json.Marshal(tf.Options)
 
 	if err != nil {
-		panic(err)
+		panic(errors.Wrap(err, errors.ErrorTypeInternal, "failed to marshal trigger options").WithMetadata("triggerID", tf.ID.String()))
 	}
 
 	insertQuery := `
@@ -67,7 +68,8 @@ func (f *Factory) MockTriggerFunction(env *MockEnv, overwrites ...map[string]any
 	err := mock.Insert(f.conn)
 
 	if err != nil {
-		fmt.Printf("Error inserting Triggerfunction %s", err.Error())
+		wrappedErr := errors.Wrap(err, errors.ErrorTypeDatabase, "failed to insert trigger function").WithMetadata("envID", env.ID.String())
+		fmt.Printf("Error inserting Triggerfunction %s", wrappedErr.Error())
 	}
 
 	return &mock
