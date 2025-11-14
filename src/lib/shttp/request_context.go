@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/model"
 	"github.com/stormkit-io/stormkit-io/src/lib/shttp/shttperr"
 )
@@ -156,7 +157,7 @@ func (r *RequestContext) Post(out any) error {
 	contents, err := io.ReadAll(r.Request.Body)
 
 	if err != nil {
-		return err
+		return errors.Wrap(err, errors.ErrorTypeInternal, fmt.Sprintf("failed to read request body: method=%s path=%s", r.Method, r.URL().Path))
 	}
 
 	defer func() {
@@ -166,7 +167,7 @@ func (r *RequestContext) Post(out any) error {
 	if err = json.Unmarshal(contents, out); err != nil {
 		verr := &shttperr.ValidationError{}
 		verr.SetError("error", fmt.Sprintf("Cannot unmarshal request: %s", err.Error()))
-		return verr
+		return errors.Wrap(verr, errors.ErrorTypeValidation, fmt.Sprintf("failed to parse request JSON: method=%s path=%s", r.Method, r.URL().Path))
 	}
 
 	if m, ok := out.(model.Model); ok {
@@ -184,7 +185,7 @@ func (r *RequestContext) UploadedFile(key string) (*File, error) {
 	file, header, err := r.Request.FormFile(key)
 
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, errors.ErrorTypeInternal, fmt.Sprintf("failed to retrieve uploaded file: key=%s path=%s", key, r.URL().Path))
 	}
 
 	defer file.Close()

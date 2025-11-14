@@ -89,7 +89,7 @@ func (s *Store) DeploymentByID(ctx context.Context, id types.ID) (*Deployment, e
 		copy := ConfigSnapshot{}
 
 		if err := json.Unmarshal(d.ConfigCopy, &copy); err != nil {
-			return nil, errors.Wrapf(err, errors.ErrorTypeInternal, "failed to unmarshal config copy for deployment_id=%d", id)
+			return nil, errors.Wrapf(err, errors.ErrorTypeInternal, "failed to unmarshal config copy for deployment_id=%d app_id=%d", id, d.AppID)
 		}
 
 		d.BuildConfig = copy.BuildConfig
@@ -420,10 +420,14 @@ func (s *Store) InsertDeployment(ctx context.Context, d *Deployment) error {
 	row, err := s.QueryRow(ctx, stmt.insertDeployment, params...)
 
 	if err != nil {
-		return err
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to insert deployment for app_id=%d env_id=%d branch=%s", d.AppID, d.EnvID, d.Branch)
 	}
 
-	return row.Scan(&d.ID, &d.CreatedAt)
+	if err := row.Scan(&d.ID, &d.CreatedAt); err != nil {
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to scan insert result for app_id=%d env_id=%d", d.AppID, d.EnvID)
+	}
+
+	return nil
 }
 
 // UpdateLogs will update the deployment logs for the given deployment id.
@@ -433,7 +437,10 @@ func (s *Store) UpdateLogs(ctx context.Context, did types.ID, logs string) error
 	}
 
 	_, err := s.Exec(ctx, stmt.updateLogs, logs, did)
-	return err
+	if err != nil {
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to update logs for deployment_id=%d", did)
+	}
+	return nil
 }
 
 func (s *Store) UpdateStatusChecks(ctx context.Context, did types.ID, logs string) error {
@@ -442,26 +449,38 @@ func (s *Store) UpdateStatusChecks(ctx context.Context, did types.ID, logs strin
 	}
 
 	_, err := s.Exec(ctx, stmt.updateStatusChecks, logs, did)
-	return err
+	if err != nil {
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to update status checks for deployment_id=%d", did)
+	}
+	return nil
 }
 
 // UpdateExitCode updates the exit code of the deployment if it's not updated already.
 func (s *Store) UpdateExitCode(ctx context.Context, deploymentID types.ID, exitCode int) error {
 	_, err := s.Exec(ctx, stmt.updateExitCode, exitCode, deploymentID)
-	return err
+	if err != nil {
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to update exit code for deployment_id=%d exit_code=%d", deploymentID, exitCode)
+	}
+	return nil
 }
 
 // UpdateCommitID updates the commit ID of the deployment.
 func (s *Store) UpdateCommitInfo(ctx context.Context, deploymentID types.ID, info CommitInfo) error {
 	_, err := s.Exec(ctx, stmt.updateCommitInfo, info.ID, info.Author, info.Message, deploymentID)
-	return err
+	if err != nil {
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to update commit info for deployment_id=%d commit_id=%s", deploymentID, info.ID)
+	}
+	return nil
 }
 
 // MarkDeploymentsAsDeleted marks the deployment as deleted.
 // This function also DELETEs all the logs to free up some space.
 func (s *Store) MarkDeploymentsAsDeleted(ctx context.Context, ids []types.ID) error {
 	_, err := s.Exec(ctx, stmt.markDeploymentsAsDeleted, pq.Array(ids))
-	return err
+	if err != nil {
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to mark deployments as deleted count=%d", len(ids))
+	}
+	return nil
 }
 
 type DeploymentStats struct {
@@ -477,7 +496,7 @@ func (s *Store) IsDeploymentAlreadyBuilt(ctx context.Context, commitID string) (
 	row, err := s.QueryRow(ctx, stmt.isDeploymentAlreadyBuilt, commitID)
 
 	if err != nil {
-		return false, err
+		return false, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to query deployment status for commit_id=%s", commitID)
 	}
 
 	err = row.Scan(&count)
@@ -487,7 +506,7 @@ func (s *Store) IsDeploymentAlreadyBuilt(ctx context.Context, commitID string) (
 			return false, nil
 		}
 
-		return false, err
+		return false, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to scan deployment count for commit_id=%s", commitID)
 	}
 
 	return count > 0, nil
@@ -497,13 +516,19 @@ func (s *Store) IsDeploymentAlreadyBuilt(ctx context.Context, commitID string) (
 // and setting the exit_code to -1.
 func (s *Store) StopDeployment(ctx context.Context, deploymentID types.ID) error {
 	_, err := s.Exec(ctx, stmt.stopDeployment, deploymentID)
-	return err
+	if err != nil {
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to stop deployment for deployment_id=%d", deploymentID)
+	}
+	return nil
 }
 
 // StopStatusChecks sets the status_checks_passed column to false.
 func (s *Store) StopStatusChecks(ctx context.Context, deploymentID types.ID) error {
 	_, err := s.Exec(ctx, stmt.stopStatusChecks, deploymentID)
-	return err
+	if err != nil {
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to stop status checks for deployment_id=%d", deploymentID)
+	}
+	return nil
 }
 
 // IsDeploymentStopped checks whether a deployment is already stopped or not.
@@ -513,7 +538,7 @@ func (s *Store) IsDeploymentStopped(ctx context.Context, deploymentID types.ID) 
 	row, err := s.QueryRow(ctx, stmt.selectExitCode, deploymentID)
 
 	if err != nil {
-		return false, err
+		return false, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to query exit code for deployment_id=%d", deploymentID)
 	}
 
 	err = row.Scan(&exitCode)
@@ -523,7 +548,7 @@ func (s *Store) IsDeploymentStopped(ctx context.Context, deploymentID types.ID) 
 			return false, nil
 		}
 
-		return false, err
+		return false, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to scan exit code for deployment_id=%d", deploymentID)
 	}
 
 	return exitCode.ValueOrZero() == int64(ExitCodeStopped), nil
@@ -533,7 +558,10 @@ func (s *Store) IsDeploymentStopped(ctx context.Context, deploymentID types.ID) 
 // is the $GITHUB_RUN_ID available in github actions.
 func (s *Store) UpdateGithubRunID(ctx context.Context, deploymentID types.ID, runID types.ID) error {
 	_, err := s.Exec(ctx, stmt.updateGithubRunID, runID, deploymentID)
-	return err
+	if err != nil {
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to update github run id for deployment_id=%d run_id=%d", deploymentID, runID)
+	}
+	return nil
 }
 
 func (s *Store) UpdateDeploymentResult(ctx context.Context, d *Deployment, result integrations.UploadResult) error {
@@ -577,17 +605,23 @@ func (s *Store) UpdateDeploymentResult(ctx context.Context, d *Deployment, resul
 	)
 
 	if err != nil {
-		slog.Errorf("error while updating upload result: %v", err)
-		return err
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to update deployment result for deployment_id=%d app_id=%d", d.ID, d.AppID)
 	}
 
-	return row.Scan(&d.StoppedAt)
+	if err := row.Scan(&d.StoppedAt); err != nil {
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to scan stopped_at for deployment_id=%d", d.ID)
+	}
+
+	return nil
 }
 
 // MarkArtifactsAsDeleted marks artifacts as deleted.
 func (s *Store) MarkArtifactsAsDeleted(ctx context.Context, ids []types.ID) error {
 	_, err := s.Exec(ctx, stmt.markArtifactsAsDeleted, pq.Array(ids))
-	return err
+	if err != nil {
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to mark artifacts as deleted count=%d", len(ids))
+	}
+	return nil
 }
 
 // LockDeployment locks a deployment so that it becomes immutable and updates the status checks result.
@@ -595,12 +629,12 @@ func (s *Store) LockDeployment(ctx context.Context, id types.ID, statusChecksPas
 	_, err := s.Exec(ctx, stmt.lockDeployment, statusChecksPassed, id)
 
 	if err != nil {
-		return err
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to lock deployment for deployment_id=%d", id)
 	}
 
 	if config.IsStormkitCloud() {
 		if _, err := s.Exec(ctx, stmt.updateUserMetrics, id); err != nil {
-			return err
+			return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to update user metrics for deployment_id=%d", id)
 		}
 	}
 
@@ -613,7 +647,10 @@ func (s *Store) Restart(ctx context.Context, d *Deployment) error {
 	d.ExitCode = null.NewInt(0, false)
 	d.IsImmutable = null.NewBool(false, false)
 	_, err := s.Exec(ctx, stmt.restartDeployment, d.ID)
-	return err
+	if err != nil {
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to restart deployment for deployment_id=%d app_id=%d", d.ID, d.AppID)
+	}
+	return nil
 }
 
 // Publish publishes the given deployments.
@@ -630,8 +667,7 @@ func (s *Store) Publish(ctx context.Context, settings ...*PublishSettings) error
 		Parse(stmt.publish)
 
 	if err != nil {
-		slog.Errorf("error parsing publish query template: %v", err)
-		return err
+		return errors.Wrapf(err, errors.ErrorTypeInternal, "failed to parse publish query template")
 	}
 
 	params := []any{}
@@ -654,11 +690,13 @@ func (s *Store) Publish(ctx context.Context, settings ...*PublishSettings) error
 	}
 
 	if err = tmpl.Execute(&qb, data); err != nil {
-		slog.Errorf("Error executing query template: %v", err)
-		return err
+		return errors.Wrapf(err, errors.ErrorTypeInternal, "failed to execute publish query template")
 	}
 
 	params = append(params, pq.Array(envIDs))
 	_, err = s.Exec(ctx, qb.String(), params...)
-	return err
+	if err != nil {
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to publish deployments count=%d", len(settings))
+	}
+	return nil
 }

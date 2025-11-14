@@ -5,6 +5,7 @@ import (
 	"database/sql"
 
 	"github.com/stormkit-io/stormkit-io/src/lib/database"
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/types"
 )
 
@@ -26,7 +27,7 @@ func (s *Store) AppDetailsForHooks(did types.ID) (*AppDetails, error) {
 	row, err := s.QueryRow(context.TODO(), stmt.appDetailsForHooks, did)
 
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to query app details for deployment_id=%d", did)
 	}
 
 	err = row.Scan(
@@ -38,5 +39,9 @@ func (s *Store) AppDetailsForHooks(did types.ID) (*AppDetails, error) {
 		return nil, nil
 	}
 
-	return d, err
+	if err != nil {
+		return nil, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to scan app details for deployment_id=%d", did)
+	}
+
+	return d, nil
 }

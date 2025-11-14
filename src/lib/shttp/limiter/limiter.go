@@ -1,9 +1,12 @@
 package limiter
 
 import (
+	"fmt"
 	"net"
 	"net/http"
 	"time"
+
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 )
 
 // Options represents the rate limit options.
@@ -51,7 +54,8 @@ func getRemoteAddr(r *http.Request) string {
 	// Get the IP address from r.RemoteAddr
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
-		// Fallback to the RemoteAddr if parsing fails (e.g., no port in the address)
+		// Log the error but fallback gracefully
+		_ = errors.Wrap(err, errors.ErrorTypeInternal, fmt.Sprintf("failed to parse remote address: addr=%s", r.RemoteAddr))
 		return r.RemoteAddr
 	}
 

@@ -99,11 +99,10 @@ func (zm *ZipManager) GetFile(args GetFileArgs) (*GetFileResult, error) {
 		zm.cache[did].Location, err = zm.download(did, bucket, prefix)
 
 		if err != nil {
-			return nil, errors.Wrap(err, errors.ErrorTypeExternal, "failed to download zip file", map[string]interface{}{
-				"deployment_id": did,
-				"bucket":        bucket,
-				"prefix":        prefix,
-			})
+			return nil, errors.Wrap(err, errors.ErrorTypeExternal, "failed to download zip file").
+				WithContext("deployment_id", did).
+				WithContext("bucket", bucket).
+				WithContext("prefix", prefix)
 		}
 	}
 
@@ -113,21 +112,19 @@ func (zm *ZipManager) GetFile(args GetFileArgs) (*GetFileResult, error) {
 	data, err := os.ReadFile(filePath)
 
 	if err != nil {
-		return nil, errors.Wrap(err, errors.ErrorTypeInternal, "failed to read file from zip", map[string]interface{}{
-			"file_path":     filePath,
-			"deployment_id": did,
-			"file_name":     args.FileName,
-		})
+		return nil, errors.Wrap(err, errors.ErrorTypeInternal, "failed to read file from zip").
+			WithContext("file_path", filePath).
+			WithContext("deployment_id", did).
+			WithContext("file_name", args.FileName)
 	}
 
 	stat, err := os.Stat(filePath)
 
 	if err != nil {
-		return nil, errors.Wrap(err, errors.ErrorTypeInternal, "failed to stat file from zip", map[string]interface{}{
-			"file_path":     filePath,
-			"deployment_id": did,
-			"file_name":     args.FileName,
-		})
+		return nil, errors.Wrap(err, errors.ErrorTypeInternal, "failed to stat file from zip").
+			WithContext("file_path", filePath).
+			WithContext("deployment_id", did).
+			WithContext("file_name", args.FileName)
 	}
 
 	return &GetFileResult{

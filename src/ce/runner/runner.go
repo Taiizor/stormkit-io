@@ -15,6 +15,7 @@ import (
 	"github.com/stormkit-io/stormkit-io/src/ce/api/app/deploy"
 	"github.com/stormkit-io/stormkit-io/src/ce/api/app/deployservice"
 	"github.com/stormkit-io/stormkit-io/src/lib/config"
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/integrations"
 	"github.com/stormkit-io/stormkit-io/src/lib/slog"
 	"github.com/stormkit-io/stormkit-io/src/lib/utils"
@@ -109,14 +110,14 @@ func parsePackageJson(packageJsonPath string) *PackageJson {
 	data, err := os.ReadFile(packageJsonPath)
 
 	if err != nil {
-		slog.Errorf("could not read package.json: %v", err)
+		slog.Errorf("could not read package.json: %v", errors.Wrapf(err, errors.ErrorTypeInternal, "failed to read package.json at path=%s", packageJsonPath))
 		return nil
 	}
 
 	p := &PackageJson{}
 
 	if err := json.Unmarshal(data, p); err != nil {
-		slog.Errorf("could not parse package.json: %v", err)
+		slog.Errorf("could not parse package.json: %v", errors.Wrapf(err, errors.ErrorTypeInternal, "failed to unmarshal package.json at path=%s", packageJsonPath))
 		return nil
 	}
 
@@ -163,7 +164,7 @@ func (o RunnerOpts) MkdirAll() error {
 		}
 
 		if err := os.MkdirAll(dir, 0776); err != nil {
-			return err
+			return errors.Wrapf(err, errors.ErrorTypeInternal, "failed to create directory at path=%s", dir)
 		}
 	}
 
@@ -182,7 +183,7 @@ func Start(payload, rootDir string) error {
 	p := Payload{}
 
 	if err := json.Unmarshal([]byte(payload), &p); err != nil {
-		return err
+		return errors.Wrapf(err, errors.ErrorTypeInternal, "failed to unmarshal deployment payload")
 	}
 
 	// If the --root-dir flag is provided, override the payload value
@@ -193,7 +194,7 @@ func Start(payload, rootDir string) error {
 	msg, err := deployservice.FromEncrypted(p.DeploymentMsg)
 
 	if err != nil {
-		return err
+		return errors.Wrapf(err, errors.ErrorTypeInternal, "failed to decrypt deployment message for deployment_id=%s", p.DeploymentID)
 	}
 
 	DeploymentIDEnc = utils.EncryptID(utils.StringToID(p.DeploymentID))
@@ -247,19 +248,19 @@ func Start(payload, rootDir string) error {
 	}
 
 	if err := opts.MkdirAll(); err != nil {
-		return err
+		return errors.Wrapf(err, errors.ErrorTypeInternal, "failed to create directories for deployment_id=%s", p.DeploymentID)
 	}
 
 	defer func(opts RunnerOpts) {
 		if opts.Repo.Dir != "" {
 			if err := os.RemoveAll(opts.Repo.Dir); err != nil {
-				slog.Errorf("could not remove repo dir: %v", err)
+				slog.Errorf("could not remove repo dir: %v", errors.Wrapf(err, errors.ErrorTypeInternal, "failed to remove repo directory at path=%s", opts.Repo.Dir))
 			}
 		}
 
 		if opts.KeysDir != "" {
 			if err := os.RemoveAll(opts.KeysDir); err != nil {
-				slog.Errorf("could not remove keys dir: %v", err)
+				slog.Errorf("could not remove keys dir: %v", errors.Wrapf(err, errors.ErrorTypeInternal, "failed to remove keys directory at path=%s", opts.KeysDir))
 			}
 		}
 	}(opts)

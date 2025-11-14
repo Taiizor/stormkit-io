@@ -107,10 +107,9 @@ func FilePathWalkDir(root string) []File {
 		content, err := os.ReadFile(path)
 
 		if err != nil {
-			return errors.Wrap(err, errors.ErrorTypeInternal, "failed to read file during walk", map[string]interface{}{
-				"file_path": path,
-				"root":      root,
-			})
+			return errors.Wrap(err, errors.ErrorTypeInternal, "failed to read file during walk").
+				WithContext("file_path", path).
+				WithContext("root", root)
 		}
 
 		files = append(files, File{

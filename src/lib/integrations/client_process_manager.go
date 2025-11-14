@@ -153,10 +153,9 @@ func (s *Service) Kill() {
 
 func (s *Service) processLogs(input io.ReadSeeker, start int64) error {
 	if _, err := input.Seek(start, 0); err != nil {
-		return errors.Wrap(err, errors.ErrorTypeInternal, "failed to seek in log file", map[string]interface{}{
-			"arn":      s.arn,
-			"position": start,
-		})
+		return errors.Wrap(err, errors.ErrorTypeInternal, "failed to seek in log file").
+			WithContext("arn", s.arn).
+			WithContext("position", start)
 	}
 
 	scanner := bufio.NewScanner(input)
@@ -297,26 +296,23 @@ func (pm *ProcessManager) Start(ctx context.Context, args *InvokeArgs, workDir s
 
 	if err != nil {
 		slog.Errorf("cannot open log file: %s", err.Error())
-		return nil, errors.Wrap(err, errors.ErrorTypeInternal, "failed to create log file", map[string]interface{}{
-			"deployment_id": args.DeploymentID.String(),
-			"work_dir":      workDir,
-		})
+		return nil, errors.Wrap(err, errors.ErrorTypeInternal, "failed to create log file").
+			WithContext("deployment_id", args.DeploymentID.String()).
+			WithContext("work_dir", workDir)
 	}
 
 	if !args.IsPublished && args.EnvVariables["PORT"] != "" {
-		return nil, errors.New(errors.ErrorTypeValidation, "custom ports are only available for published deployments", map[string]interface{}{
-			"deployment_id": args.DeploymentID.String(),
-			"port":          args.EnvVariables["PORT"],
-		})
+		return nil, errors.New(errors.ErrorTypeValidation, "custom ports are only available for published deployments").
+			WithContext("deployment_id", args.DeploymentID.String()).
+			WithContext("port", args.EnvVariables["PORT"])
 	}
 
 	port, err := findAvailablePort(args)
 
 	if err != nil {
-		return nil, errors.Wrap(err, errors.ErrorTypeInternal, "cannot find an available port", map[string]interface{}{
-			"deployment_id": args.DeploymentID.String(),
-			"arn":           args.ARN,
-		})
+		return nil, errors.Wrap(err, errors.ErrorTypeInternal, "cannot find an available port").
+			WithContext("deployment_id", args.DeploymentID.String()).
+			WithContext("arn", args.ARN)
 	}
 
 	vars := prepareEnvironmentVariables(args, port)
@@ -370,19 +366,17 @@ func (pm *ProcessManager) Start(ctx context.Context, args *InvokeArgs, workDir s
 		yml, err := os.ReadFile(path.Join(workDir, "stormkit.server.yml"))
 
 		if err != nil {
-			return nil, errors.Wrap(err, errors.ErrorTypeInternal, "failed to read server config file", map[string]interface{}{
-				"work_dir":      workDir,
-				"deployment_id": args.DeploymentID.String(),
-			})
+			return nil, errors.Wrap(err, errors.ErrorTypeInternal, "failed to read server config file").
+				WithContext("work_dir", workDir).
+				WithContext("deployment_id", args.DeploymentID.String())
 		}
 
 		config := ServerConfig{}
 
 		if err := yaml.Unmarshal(yml, &config); err != nil {
-			return nil, errors.Wrap(err, errors.ErrorTypeInternal, "failed to parse server config file", map[string]interface{}{
-				"work_dir":      workDir,
-				"deployment_id": args.DeploymentID.String(),
-			})
+			return nil, errors.Wrap(err, errors.ErrorTypeInternal, "failed to parse server config file").
+				WithContext("work_dir", workDir).
+				WithContext("deployment_id", args.DeploymentID.String())
 		}
 
 		service.serverConfig = &config
@@ -393,10 +387,9 @@ func (pm *ProcessManager) Start(ctx context.Context, args *InvokeArgs, workDir s
 
 			// Make sure directory exists
 			if err := os.MkdirAll(workDir, 0776); err != nil {
-				return nil, errors.Wrap(err, errors.ErrorTypeInternal, "cannot create work directory", map[string]interface{}{
-					"work_dir":      workDir,
-					"deployment_id": args.DeploymentID.String(),
-				})
+				return nil, errors.Wrap(err, errors.ErrorTypeInternal, "cannot create work directory").
+					WithContext("work_dir", workDir).
+					WithContext("deployment_id", args.DeploymentID.String())
 			}
 		}
 	}
@@ -509,10 +502,9 @@ func (pm *ProcessManager) Invoke(args InvokeArgs, workDir string) (*InvokeResult
 	}
 
 	if !args.IsPublished && args.EnvVariables["PORT"] != "" {
-		err := errors.New(errors.ErrorTypeValidation, "custom ports are only available for published deployments", map[string]interface{}{
-			"deployment_id": args.DeploymentID.String(),
-			"port":          args.EnvVariables["PORT"],
-		})
+		err := errors.New(errors.ErrorTypeValidation, "custom ports are only available for published deployments").
+			WithContext("deployment_id", args.DeploymentID.String()).
+			WithContext("port", args.EnvVariables["PORT"])
 		slog.Error(err)
 		return &InvokeResult{
 			StatusCode: http.StatusBadRequest,
@@ -551,11 +543,10 @@ func (pm *ProcessManager) Invoke(args InvokeArgs, workDir string) (*InvokeResult
 		service, err = pm.Start(context.TODO(), &args, workDir)
 
 		if err != nil {
-			return nil, errors.Wrap(err, errors.ErrorTypeInternal, "failed to start service", map[string]interface{}{
-				"arn":           args.ARN,
-				"deployment_id": args.DeploymentID.String(),
-				"work_dir":      workDir,
-			})
+			return nil, errors.Wrap(err, errors.ErrorTypeInternal, "failed to start service").
+				WithContext("arn", args.ARN).
+				WithContext("deployment_id", args.DeploymentID.String()).
+				WithContext("work_dir", workDir)
 		}
 
 		pm.addService(service, args.ARN)
@@ -696,11 +687,10 @@ func (pm *ProcessManager) requestWithRetry(args InvokeArgs, service *Service) (*
 	for {
 		select {
 		case <-timeout:
-			return nil, errors.New(errors.ErrorTypeInternal, "server is not up and running within allowed timeout", map[string]interface{}{
-				"arn":     service.arn,
-				"port":    service.port,
-				"timeout": "30s",
-			})
+			return nil, errors.New(errors.ErrorTypeInternal, "server is not up and running within allowed timeout").
+				WithContext("arn", service.arn).
+				WithContext("port", service.port).
+				WithContext("timeout", "30s")
 		case <-ticker.C:
 			res, err := pm.request(args, service)
 
@@ -732,11 +722,10 @@ func (pm *ProcessManager) request(args InvokeArgs, service *Service) (*InvokeRes
 	})
 
 	if res.Error != nil {
-		return nil, errors.Wrap(res.Error, errors.ErrorTypeExternal, "failed to proxy request to service", map[string]interface{}{
-			"arn":    service.arn,
-			"port":   service.port,
-			"target": target.String(),
-		})
+		return nil, errors.Wrap(res.Error, errors.ErrorTypeExternal, "failed to proxy request to service").
+			WithContext("arn", service.arn).
+			WithContext("port", service.port).
+			WithContext("target", target.String())
 	}
 
 	var data []byte
@@ -775,7 +764,7 @@ func findAvailablePort(args *InvokeArgs) (int, error) {
 	listener, err := net.Listen("tcp", ":0")
 
 	if err != nil {
-		return 0, errors.Wrap(err, errors.ErrorTypeInternal, "failed to find available port", nil)
+		return 0, errors.Wrap(err, errors.ErrorTypeInternal, "failed to find available port")
 	}
 
 	if listener != nil {

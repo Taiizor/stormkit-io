@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/NYTimes/gziphandler"
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/shttp/limiter"
 	"github.com/stormkit-io/stormkit-io/src/lib/utils"
 )
@@ -104,7 +105,7 @@ func TimeAuthValid(req *RequestContext) (bool, error) {
 	timestamp, err = utils.Decrypt(timestamp)
 
 	if err != nil {
-		return false, err
+		return false, errors.Wrap(err, errors.ErrorTypeInternal, "failed to decrypt time-based auth token")
 	}
 
 	ts := int64(binary.LittleEndian.Uint64(timestamp))

@@ -132,7 +132,7 @@ func (r Repo) Checkout(ctx context.Context) error {
 	}
 
 	if err := cmd.Run(); err != nil {
-		return err
+		return errors.Wrapf(err, errors.ErrorTypeExternal, "git clone failed for repo=%s branch=%s", r.address, r.branch)
 	}
 
 	return nil
@@ -208,7 +208,7 @@ func (r Repo) createSSHKeys() error {
 	creds, err := utils.DecodeString(r.accessToken)
 
 	if err != nil {
-		return err
+		return errors.Wrapf(err, errors.ErrorTypeInternal, "failed to decode access token")
 	}
 
 	pieces := strings.Split(string(creds), "|")
@@ -222,13 +222,13 @@ func (r Repo) createSSHKeys() error {
 	err = os.WriteFile(path.Join(r.keysDir, "id_rsa.pub"), []byte(publicKey), 0644)
 
 	if err != nil {
-		return err
+		return errors.Wrapf(err, errors.ErrorTypeInternal, "failed to write SSH public key to path=%s", path.Join(r.keysDir, "id_rsa.pub"))
 	}
 
 	err = os.WriteFile(path.Join(r.keysDir, "id_rsa"), []byte(privateKey), 0600)
 
 	if err != nil {
-		return err
+		return errors.Wrapf(err, errors.ErrorTypeInternal, "failed to write SSH private key to path=%s", path.Join(r.keysDir, "id_rsa"))
 	}
 
 	return nil

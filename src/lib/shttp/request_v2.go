@@ -2,7 +2,7 @@ package shttp
 
 import (
 	"bytes"
-	"errors"
+	"fmt"
 	"io"
 	"math"
 	"net"
@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/slog"
 )
 
@@ -118,7 +119,7 @@ func (r *RequestV2) Do() (*HTTPResponse, error) {
 	req, err := http.NewRequest(r.method, r.url, bytes.NewBuffer(r.payload))
 
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, errors.ErrorTypeExternal, fmt.Sprintf("failed to create HTTP request: method=%s url=%s", r.method, r.url))
 	}
 
 	req.Header = r.headers
@@ -155,10 +156,10 @@ func (r *RequestV2) Do() (*HTTPResponse, error) {
 	}
 
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, errors.ErrorTypeExternal, fmt.Sprintf("HTTP request failed: method=%s url=%s", r.method, r.url))
 	}
 
-	return nil, errors.New("response object is empty")
+	return nil, errors.New(errors.ErrorTypeExternal, fmt.Sprintf("response object is empty: method=%s url=%s", r.method, r.url))
 }
 
 type ProxyArgs struct {
@@ -209,10 +210,11 @@ func Proxy(req *RequestContext, args ProxyArgs) *Response {
 			body, err := io.ReadAll(response.Body)
 
 			if err != nil {
+				wrappedErr := errors.Wrap(err, errors.ErrorTypeInternal, fmt.Sprintf("failed to read proxy response body: target=%s", args.Target))
 				return &Response{
 					Status: http.StatusInternalServerError,
-					Data:   err.Error(),
-					Error:  err,
+					Data:   wrappedErr.Error(),
+					Error:  wrappedErr,
 				}
 			}
 
@@ -226,9 +228,10 @@ func Proxy(req *RequestContext, args ProxyArgs) *Response {
 		}
 	}
 
+	wrappedErr := errors.Wrap(err, errors.ErrorTypeExternal, fmt.Sprintf("proxy request failed: method=%s target=%s", req.Method, args.Target))
 	return &Response{
 		Status: http.StatusInternalServerError,
-		Data:   err.Error(),
-		Error:  err,
+		Data:   wrappedErr.Error(),
+		Error:  wrappedErr,
 	}
 }

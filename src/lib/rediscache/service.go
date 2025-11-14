@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/shutdown"
 	"github.com/stormkit-io/stormkit-io/src/lib/slog"
 	"github.com/stormkit-io/stormkit-io/src/lib/utils"
@@ -147,7 +148,7 @@ func (s *MicroService) Key(name string) string {
 // Subscribe registers a new event handler for the microservice
 func (s *MicroService) Subscribe(event string, handler Handler) error {
 	if s.client == nil {
-		return fmt.Errorf("redis client is not initialized")
+		return errors.New(errors.ErrorTypeExternal, fmt.Sprintf("redis client is not initialized: event=%s", event))
 	}
 
 	sub := s.client.Subscribe(s.ctx, event)
@@ -171,7 +172,7 @@ func (s *MicroService) Subscribe(event string, handler Handler) error {
 // SubscribeAsync registers a new event handler for the microservice asynchronously.
 func (s *MicroService) SubscribeAsync(event string, handler Handler) error {
 	if s.client == nil {
-		return fmt.Errorf("redis client is not initialized")
+		return errors.New(errors.ErrorTypeExternal, fmt.Sprintf("redis client is not initialized: event=%s", event))
 	}
 
 	go s.Subscribe(event, handler)
@@ -197,7 +198,7 @@ func (s *MicroService) List(filter []string) ([]*MicroService, error) {
 	keys, err := client.Keys(s.ctx, "service:sd:*").Result()
 
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, errors.ErrorTypeExternal, "failed to list service keys from Redis")
 	}
 
 	var services []*MicroService

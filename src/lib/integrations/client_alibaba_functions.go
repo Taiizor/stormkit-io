@@ -37,10 +37,9 @@ func (a AlibabaClient) Invoke(args InvokeArgs) (*InvokeResult, error) {
 	requestPayload, err := json.Marshal(prepareInvokeRequest(args))
 
 	if err != nil {
-		return nil, errors.Wrap(err, errors.ErrorTypeInternal, "failed to marshal invoke request", map[string]interface{}{
-			"function_name": fnName,
-			"arn":           args.ARN,
-		})
+		return nil, errors.Wrap(err, errors.ErrorTypeInternal, "failed to marshal invoke request").
+			WithContext("function_name", fnName).
+			WithContext("arn", args.ARN)
 	}
 
 	result, err := a.client.InvokeFunction(&fnName, &client.InvokeFunctionRequest{
@@ -50,11 +49,10 @@ func (a AlibabaClient) Invoke(args InvokeArgs) (*InvokeResult, error) {
 
 	if err != nil {
 		slog.Errorf("error while invoking function=%s, err=%v", fnName, err)
-		return nil, errors.Wrap(err, errors.ErrorTypeExternal, "failed to invoke Alibaba function", map[string]interface{}{
-			"function_name":    fnName,
-			"function_version": fnVersion,
-			"arn":              args.ARN,
-		})
+		return nil, errors.Wrap(err, errors.ErrorTypeExternal, "failed to invoke Alibaba function").
+			WithContext("function_name", fnName).
+			WithContext("function_version", fnVersion).
+			WithContext("arn", args.ARN)
 	}
 
 	if result == nil {
@@ -71,19 +69,17 @@ func (a AlibabaClient) Invoke(args InvokeArgs) (*InvokeResult, error) {
 	payload, err := io.ReadAll(result.Body)
 
 	if err != nil {
-		return nil, errors.Wrap(err, errors.ErrorTypeInternal, "failed to read function response body", map[string]interface{}{
-			"function_name": fnName,
-			"arn":           args.ARN,
-		})
+		return nil, errors.Wrap(err, errors.ErrorTypeInternal, "failed to read function response body").
+			WithContext("function_name", fnName).
+			WithContext("arn", args.ARN)
 	}
 
 	response := FunctionResponse{}
 
 	if err := json.Unmarshal(payload, &response); err != nil {
-		return nil, errors.Wrap(err, errors.ErrorTypeInternal, "failed to unmarshal function response", map[string]interface{}{
-			"function_name": fnName,
-			"arn":           args.ARN,
-		})
+		return nil, errors.Wrap(err, errors.ErrorTypeInternal, "failed to unmarshal function response").
+			WithContext("function_name", fnName).
+			WithContext("arn", args.ARN)
 	}
 
 	body := utils.GetString(response.Buffer, response.Body)
@@ -140,11 +136,10 @@ func (a AlibabaClient) uploadToFunctions(args UploadArgs) (UploadOverview, error
 	fileContent, err := os.ReadFile(args.zip)
 
 	if err != nil {
-		return overview, errors.Wrap(err, errors.ErrorTypeInternal, "failed to read zip file", map[string]interface{}{
-			"zip_path":      args.zip,
-			"app_id":        args.AppID.String(),
-			"deployment_id": args.DeploymentID.String(),
-		})
+		return overview, errors.Wrap(err, errors.ErrorTypeInternal, "failed to read zip file").
+			WithContext("zip_path", args.zip).
+			WithContext("app_id", args.AppID.String()).
+			WithContext("deployment_id", args.DeploymentID.String())
 	}
 
 	s3args := S3Args{
@@ -160,12 +155,11 @@ func (a AlibabaClient) uploadToFunctions(args UploadArgs) (UploadOverview, error
 	}
 
 	if err := a.awsClient.UploadFile(uploadFile, s3args); err != nil {
-		return overview, errors.Wrap(err, errors.ErrorTypeExternal, "failed to upload file to S3", map[string]interface{}{
-			"bucket_name":   args.BucketName,
-			"file_path":     uploadFile.RelativePath,
-			"app_id":        args.AppID.String(),
-			"deployment_id": args.DeploymentID.String(),
-		})
+		return overview, errors.Wrap(err, errors.ErrorTypeExternal, "failed to upload file to S3").
+			WithContext("bucket_name", args.BucketName).
+			WithContext("file_path", uploadFile.RelativePath).
+			WithContext("app_id", args.AppID.String()).
+			WithContext("deployment_id", args.DeploymentID.String())
 	}
 
 	// Alibaba requires function names to start with a letter.
@@ -214,7 +208,10 @@ func (a AlibabaClient) uploadToFunctions(args UploadArgs) (UploadOverview, error
 		})
 
 		if err != nil {
-			return overview, err
+			return overview, errors.Wrap(err, errors.ErrorTypeExternal, "failed to update Alibaba function").
+				WithContext("function_name", fnArgs.FunctionName).
+				WithContext("app_id", args.AppID.String()).
+				WithContext("deployment_id", args.DeploymentID.String())
 		}
 
 		if result != nil && result.Body != nil && result.Body.FunctionArn != nil {
@@ -230,17 +227,15 @@ func (a AlibabaClient) uploadToFunctions(args UploadArgs) (UploadOverview, error
 		})
 
 		if err != nil {
-			return overview, errors.Wrap(err, errors.ErrorTypeExternal, "failed to publish function version", map[string]interface{}{
-				"function_name": fnArgs.FunctionName,
-				"deployment_id": args.DeploymentID.String(),
-			})
+			return overview, errors.Wrap(err, errors.ErrorTypeExternal, "failed to publish function version").
+				WithContext("function_name", fnArgs.FunctionName).
+				WithContext("deployment_id", args.DeploymentID.String())
 		}
 
 		if publish == nil || publish.Body == nil || publish.Body.VersionId == nil {
-			return overview, errors.New(errors.ErrorTypeExternal, "cannot publish function: missing version ID", map[string]interface{}{
-				"function_name": fnArgs.FunctionName,
-				"deployment_id": args.DeploymentID.String(),
-			})
+			return overview, errors.New(errors.ErrorTypeExternal, "cannot publish function: missing version ID").
+				WithContext("function_name", fnArgs.FunctionName).
+				WithContext("deployment_id", args.DeploymentID.String())
 		}
 
 		overview.BytesUploaded = fstat.Size()

@@ -9,6 +9,7 @@ import (
 
 	"github.com/adhocore/gronx"
 	"github.com/stormkit-io/stormkit-io/src/lib/database"
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/slog"
 	"github.com/stormkit-io/stormkit-io/src/lib/types"
 	"github.com/stormkit-io/stormkit-io/src/lib/utils"
@@ -128,7 +129,7 @@ func (s *Store) List(ctx context.Context, envID types.ID) ([]*FunctionTrigger, e
 	}
 
 	if err := s.selectStmt.Execute(&qb, data); err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeInternal, "failed to execute select template for env_id=%d", envID)
 	}
 
 	return s.selectRows(ctx, qb.String(), envID)
@@ -143,7 +144,7 @@ func (s *Store) ByID(ctx context.Context, triggerID types.ID) (*FunctionTrigger,
 	}
 
 	if err := s.selectStmt.Execute(&qb, data); err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeInternal, "failed to execute select template for trigger_id=%d", triggerID)
 	}
 
 	rows, err := s.selectRows(ctx, qb.String(), triggerID)
@@ -169,7 +170,7 @@ func (s *Store) DueTriggers(ctx context.Context) ([]*FunctionTrigger, error) {
 	}
 
 	if err := s.selectStmt.Execute(&qb, data); err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeInternal, "failed to execute select template for due triggers")
 	}
 
 	return s.selectRows(ctx, qb.String())
@@ -180,8 +181,7 @@ func (s *Store) Insert(ctx context.Context, ft *FunctionTrigger) error {
 	opts, err := json.Marshal(ft.Options)
 
 	if err != nil {
-		slog.Errorf("error while marshaling function trigger options: %s", err.Error())
-		return err
+		return errors.Wrapf(err, errors.ErrorTypeInternal, "failed to marshal function trigger options for env_id=%d", ft.EnvID)
 	}
 
 	if ft.Status {
@@ -203,11 +203,11 @@ func (s *Store) Insert(ctx context.Context, ft *FunctionTrigger) error {
 	)
 
 	if err != nil {
-		return err
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to insert function trigger for env_id=%d cron=%s", ft.EnvID, ft.Cron)
 	}
 
 	if err := row.Scan(&ft.ID); err != nil {
-		return err
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to scan trigger ID for env_id=%d", ft.EnvID)
 	}
 
 	return nil
@@ -218,8 +218,7 @@ func (s *Store) InsertLogs(ctx context.Context, logs []TriggerLog) error {
 	var qb strings.Builder
 
 	if err := s.insertLogsStmt.Execute(&qb, logs); err != nil {
-		slog.Errorf("error executing batch query template: %v", err)
-		return err
+		return errors.Wrapf(err, errors.ErrorTypeInternal, "failed to execute insert logs template for count=%d", len(logs))
 	}
 
 	params := []any{}
@@ -231,7 +230,10 @@ func (s *Store) InsertLogs(ctx context.Context, logs []TriggerLog) error {
 	}
 
 	_, err := s.Exec(ctx, qb.String(), params...)
-	return err
+	if err != nil {
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to insert function trigger logs count=%d", len(logs))
+	}
+	return nil
 }
 
 // Update updates the given trigger function.
@@ -239,8 +241,7 @@ func (s *Store) Update(ctx context.Context, ft *FunctionTrigger) error {
 	opts, err := json.Marshal(ft.Options)
 
 	if err != nil {
-		slog.Errorf("error while marshaling function trigger options: %s", err.Error())
-		return err
+		return errors.Wrapf(err, errors.ErrorTypeInternal, "failed to marshal function trigger options for trigger_id=%d", ft.ID)
 	}
 
 	if ft.Status {
@@ -254,7 +255,10 @@ func (s *Store) Update(ctx context.Context, ft *FunctionTrigger) error {
 	}
 
 	_, err = s.Exec(ctx, stmts.updateTrigger, ft.Cron, opts, ft.Status, ft.NextRunAt, ft.ID)
-	return err
+	if err != nil {
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to update function trigger for trigger_id=%d cron=%s", ft.ID, ft.Cron)
+	}
+	return nil
 }
 
 // SetNextRunAt is a batch operation to update the nextRunAt of the given trigger ids.
@@ -262,8 +266,7 @@ func (s *Store) SetNextRunAt(ctx context.Context, values map[types.ID]utils.Unix
 	var qb strings.Builder
 
 	if err := s.updateBatchStmt.Execute(&qb, values); err != nil {
-		slog.Errorf("error executing batch query template: %v", err)
-		return err
+		return errors.Wrapf(err, errors.ErrorTypeInternal, "failed to execute update batch template for count=%d", len(values))
 	}
 
 	params := []any{}
@@ -273,13 +276,18 @@ func (s *Store) SetNextRunAt(ctx context.Context, values map[types.ID]utils.Unix
 	}
 
 	_, err := s.Exec(ctx, qb.String(), params...)
-
-	return err
+	if err != nil {
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to batch update next_run_at for count=%d", len(values))
+	}
+	return nil
 }
 
 func (s *Store) Delete(ctx context.Context, id types.ID) error {
 	_, err := s.Exec(ctx, stmts.deleteTrigger, id)
-	return err
+	if err != nil {
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to delete function trigger for trigger_id=%d", id)
+	}
+	return nil
 }
 
 // Logs return the last 25 trigger logs for the given trigger ID.

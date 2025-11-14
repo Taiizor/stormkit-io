@@ -11,6 +11,7 @@ import (
 
 	"github.com/NYTimes/gziphandler"
 	"github.com/stormkit-io/stormkit-io/src/lib/config"
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/slog"
 	"github.com/stormkit-io/stormkit-io/src/lib/tracking"
 )
@@ -250,7 +251,8 @@ func (se *ServiceEndpoint) Write(w http.ResponseWriter, req *http.Request, res *
 		body, err := io.ReadAll(data)
 
 		if err != nil {
-			w.Write([]byte(err.Error()))
+			wrappedErr := errors.Wrap(err, errors.ErrorTypeInternal, fmt.Sprintf("failed to read response body: path=%s", req.URL.Path))
+			w.Write([]byte(wrappedErr.Error()))
 		} else {
 			w.Write(body)
 		}
@@ -273,7 +275,8 @@ func (se *ServiceEndpoint) Write(w http.ResponseWriter, req *http.Request, res *
 
 		encoder := json.NewEncoder(w)
 		if err := encoder.Encode(res.Data); err != nil {
-			slog.Error(err.Error())
+			wrappedErr := errors.Wrap(err, errors.ErrorTypeInternal, fmt.Sprintf("failed to encode JSON response: path=%s", req.URL.Path))
+			slog.Error(wrappedErr.Error())
 			w.Write([]byte(""))
 		}
 
