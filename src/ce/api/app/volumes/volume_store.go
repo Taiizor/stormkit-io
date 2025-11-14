@@ -9,6 +9,7 @@ import (
 
 	"github.com/lib/pq"
 	"github.com/stormkit-io/stormkit-io/src/lib/database"
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/types"
 	"github.com/stormkit-io/stormkit-io/src/lib/utils"
 )
@@ -135,7 +136,7 @@ func (s *store) SelectFiles(ctx context.Context, args SelectFilesArgs) ([]*File,
 	}
 
 	if err := s.selectTmpl.Execute(&qb, data); err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeInternal, "failed to execute select files template for env_id=%d", args.EnvID)
 	}
 
 	rows, err := s.Query(ctx, qb.String(), params...)
@@ -145,7 +146,7 @@ func (s *store) SelectFiles(ctx context.Context, args SelectFilesArgs) ([]*File,
 			return nil, nil
 		}
 
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to query files for env_id=%d", args.EnvID)
 	}
 
 	defer rows.Close()
@@ -160,7 +161,7 @@ func (s *store) SelectFiles(ctx context.Context, args SelectFilesArgs) ([]*File,
 		)
 
 		if err != nil {
-			return nil, err
+			return nil, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to scan file row for env_id=%d", args.EnvID)
 		}
 
 		if file.Metadata == nil || file.Metadata["mountType"] == "" {
@@ -178,7 +179,7 @@ func (s *store) FileByID(ctx context.Context, fileID types.ID) (*File, error) {
 	files, err := s.SelectFiles(ctx, SelectFilesArgs{Limit: 1, FileID: []types.ID{fileID}})
 
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to select file by id=%d", fileID)
 	}
 
 	if len(files) > 0 {
@@ -193,7 +194,7 @@ func (s *store) Insert(ctx context.Context, files []*File, envID types.ID) error
 	var qb strings.Builder
 
 	if err := s.insertTmpl.Execute(&qb, files); err != nil {
-		return err
+		return errors.Wrapf(err, errors.ErrorTypeInternal, "failed to execute insert template for %d files in env_id=%d", len(files), envID)
 	}
 
 	params := []any{}
@@ -207,7 +208,7 @@ func (s *store) Insert(ctx context.Context, files []*File, envID types.ID) error
 	rows, err := s.Query(ctx, qb.String(), params...)
 
 	if err != nil {
-		return err
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to insert %d files for env_id=%d", len(files), envID)
 	}
 
 	if rows == nil {
@@ -220,7 +221,7 @@ func (s *store) Insert(ctx context.Context, files []*File, envID types.ID) error
 
 	for rows.Next() {
 		if err := rows.Scan(&files[i].ID); err != nil {
-			return err
+			return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to scan file ID at index %d for env_id=%d", i, envID)
 		}
 
 		i = i + 1
@@ -238,7 +239,10 @@ func (s *store) RemoveFiles(ctx context.Context, files []*File, envID types.ID) 
 	}
 
 	_, err := s.Exec(ctx, stmt.removeFiles, pq.Array(fileIDs), envID)
-	return err
+	if err != nil {
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to remove %d files for env_id=%d", len(files), envID)
+	}
+	return nil
 }
 
 // VolumeSize returns the volume size for the given environment.
@@ -250,13 +254,13 @@ func (s *store) VolumeSize(ctx context.Context, envID types.ID) (int64, error) {
 			return 0, nil
 		}
 
-		return 0, err
+		return 0, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to query volume size for env_id=%d", envID)
 	}
 
 	var size int64
 
 	if err := row.Scan(&size); err != nil {
-		return 0, err
+		return 0, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to scan volume size for env_id=%d", envID)
 	}
 
 	return size, nil
@@ -265,5 +269,8 @@ func (s *store) VolumeSize(ctx context.Context, envID types.ID) (int64, error) {
 // ChangeVisibility changes the visibility of the given file.
 func (s *store) ChangeVisibility(ctx context.Context, fileID types.ID, isPublic bool) error {
 	_, err := s.Exec(ctx, stmt.changeVisibility, isPublic, fileID)
-	return err
+	if err != nil {
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to change visibility for file_id=%d to public=%v", fileID, isPublic)
+	}
+	return nil
 }

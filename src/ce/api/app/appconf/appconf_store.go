@@ -19,6 +19,7 @@ import (
 	"github.com/stormkit-io/stormkit-io/src/lib/config"
 
 	"github.com/stormkit-io/stormkit-io/src/lib/database"
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/slog"
 	"github.com/stormkit-io/stormkit-io/src/lib/types"
 	"github.com/stormkit-io/stormkit-io/src/lib/utils"
@@ -144,7 +145,11 @@ func (s *Store) queryWithDeploymentID(filters ConfigFilters) (string, []any, err
 		"join":  "",
 	})
 
-	return wr.String(), []any{"*.dev", filters.DeploymentID, filters.DisplayName}, err
+	if err != nil {
+		return "", nil, errors.Wrapf(err, errors.ErrorTypeInternal, "failed to execute query template for deployment_id=%d", filters.DeploymentID)
+	}
+
+	return wr.String(), []any{"*.dev", filters.DeploymentID, filters.DisplayName}, nil
 }
 
 func (s *Store) queryWithDomainName(filters ConfigFilters) (string, []any, error) {
@@ -156,7 +161,11 @@ func (s *Store) queryWithDomainName(filters ConfigFilters) (string, []any, error
 		"columns": "dm.custom_cert_value as cert_value, dm.custom_cert_key as cert_key, dm.domain_id",
 	})
 
-	return wr.String(), []any{strings.ToLower(filters.HostName)}, err
+	if err != nil {
+		return "", nil, errors.Wrapf(err, errors.ErrorTypeInternal, "failed to execute query template for domain=%s", filters.HostName)
+	}
+
+	return wr.String(), []any{strings.ToLower(filters.HostName)}, nil
 }
 
 func (s *Store) queryWithEnvNameAndDisplayName(filters ConfigFilters) (string, []any, error) {
@@ -170,7 +179,11 @@ func (s *Store) queryWithEnvNameAndDisplayName(filters ConfigFilters) (string, [
 		)`,
 	})
 
-	return wr.String(), []any{"*.dev", filters.EnvName, filters.DisplayName, filters.HostName}, err
+	if err != nil {
+		return "", nil, errors.Wrapf(err, errors.ErrorTypeInternal, "failed to execute query template for env=%s display_name=%s", filters.EnvName, filters.DisplayName)
+	}
+
+	return wr.String(), []any{"*.dev", filters.EnvName, filters.DisplayName, filters.HostName}, nil
 }
 
 // ConfigsByDomain returns the hosting configurations for the given domain name.
@@ -197,7 +210,7 @@ func (s *Store) Configs(ctx context.Context, filters ConfigFilters) ([]*Config, 
 
 	if err != nil {
 		slog.Errorf("error while creating query template: %v", err)
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeInternal, "failed to build query for filters")
 	}
 
 	return rowsToConfigs(s.Query(ctx, query, params...))
@@ -246,7 +259,7 @@ func rowsToConfigs(rows *sql.Rows, err error) ([]*Config, error) {
 		)
 
 		if err != nil {
-			return nil, err
+			return nil, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to scan config row")
 		}
 
 		if certKey != "" && certVal != "" {
@@ -260,7 +273,7 @@ func rowsToConfigs(rows *sql.Rows, err error) ([]*Config, error) {
 			data := buildconf.BuildConf{}
 
 			if err := json.Unmarshal(buildConf, &data); err != nil {
-				return nil, err
+				return nil, errors.Wrapf(err, errors.ErrorTypeInternal, "failed to unmarshal build config for deployment_id=%d", cnf.DeploymentID)
 			}
 
 			if data.ErrorFile != "" {

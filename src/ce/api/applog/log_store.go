@@ -163,13 +163,16 @@ func (s *Store) Logs(ctx context.Context, query *LogQuery) ([]*Log, error) {
 	}
 
 	if err := s.selectTmpl.Execute(&wr, data); err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeInternal, "failed to execute select logs template for deployment_id=%d", query.DeploymentID)
 	}
 
 	rows, err := s.Query(ctx, wr.String(), params...)
 
 	if err != nil || rows == nil {
-		return nil, err
+		if err != nil {
+			return nil, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to query logs for deployment_id=%d app_id=%d", query.DeploymentID, query.AppID)
+		}
+		return nil, nil
 	}
 
 	defer rows.Close()

@@ -94,7 +94,11 @@ func (s *Store) Update(ctx context.Context, c *Env) error {
 		c.ID,
 	)
 
-	return err
+	if err != nil {
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to update env with env_id=%d", c.ID)
+	}
+
+	return nil
 }
 
 // ListEnvironments list all the configs for the given application id.
@@ -121,12 +125,12 @@ func (s *Store) ListEnvironments(ctx context.Context, appID types.ID) (cnfs []*E
 			)
 
 			if err != nil {
-				return nil, err
+				return nil, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to scan environment row for app_id=%d", appID)
 			}
 
 			if buildConf != nil {
 				if err := json.Unmarshal(buildConf, cnf.Data); err != nil {
-					return nil, err
+					return nil, errors.Wrapf(err, errors.ErrorTypeInternal, "failed to unmarshal build config for env_id=%d", cnf.ID)
 				}
 
 				if cnf.Data.Cmd != "" {
@@ -136,7 +140,7 @@ func (s *Store) ListEnvironments(ctx context.Context, appID types.ID) (cnfs []*E
 
 			if publishedInfo != nil {
 				if err := json.Unmarshal(publishedInfo, &cnf.Published); err != nil {
-					return nil, err
+					return nil, errors.Wrapf(err, errors.ErrorTypeInternal, "failed to unmarshal published info for env_id=%d", cnf.ID)
 				}
 			}
 
@@ -163,7 +167,7 @@ func (s *Store) selectEnvironment(ctx context.Context, query string, appID types
 	row, err := s.QueryRow(ctx, query, params...)
 
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to query environment")
 	}
 
 	err = row.Scan(
@@ -178,7 +182,7 @@ func (s *Store) selectEnvironment(ctx context.Context, query string, appID types
 			return nil, nil
 		}
 
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to scan environment")
 	}
 
 	// TODO: Remove this once we're done renaming this field.
@@ -186,7 +190,7 @@ func (s *Store) selectEnvironment(ctx context.Context, query string, appID types
 
 	if buildConf != nil {
 		if err := json.Unmarshal(buildConf, cnf.Data); err != nil {
-			return nil, err
+			return nil, errors.Wrapf(err, errors.ErrorTypeInternal, "failed to unmarshal build config for env_id=%d", cnf.ID)
 		}
 
 		// alias
@@ -220,19 +224,19 @@ func (s *Store) MarkAsDeleted(ctx context.Context, envID types.ID) (bool, error)
 	}
 
 	if err := s.markAsDeletedTmpl.Execute(&wr, data); err != nil {
-		return false, err
+		return false, errors.Wrapf(err, errors.ErrorTypeInternal, "failed to execute mark as deleted template for env_id=%d", envID)
 	}
 
 	result, err := s.Exec(ctx, wr.String(), envID)
 
 	if err != nil {
-		return false, err
+		return false, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to mark env_id=%d as deleted", envID)
 	}
 
 	rows, err := result.RowsAffected()
 
 	if err != nil {
-		return false, err
+		return false, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to get rows affected for env_id=%d", envID)
 	}
 
 	return rows > 0, nil

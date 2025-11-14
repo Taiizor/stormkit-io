@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 
 	"github.com/stormkit-io/stormkit-io/src/lib/database"
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/types"
 )
 
@@ -72,13 +73,13 @@ func (s *store) Config(ctx context.Context, envID types.ID) (*Config, error) {
 			return nil, nil
 		}
 
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to query mailer config for env_id=%d", envID)
 	}
 
 	var data []byte
 
 	if err := row.Scan(&data); err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to scan mailer config for env_id=%d", envID)
 	}
 
 	cnf := &Config{
@@ -86,7 +87,7 @@ func (s *store) Config(ctx context.Context, envID types.ID) (*Config, error) {
 	}
 
 	if err := json.Unmarshal(data, cnf); err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeInternal, "failed to unmarshal mailer config for env_id=%d", envID)
 	}
 
 	if cnf.Host == "" || cnf.Username == "" || cnf.Password == "" {
@@ -101,17 +102,23 @@ func (s *store) UpsertConfig(ctx context.Context, cnf *Config) error {
 	data, err := json.Marshal(cnf)
 
 	if err != nil {
-		return err
+		return errors.Wrapf(err, errors.ErrorTypeInternal, "failed to marshal mailer config for env_id=%d", cnf.EnvID)
 	}
 
 	_, err = s.Exec(ctx, stmt.upsertConfig, data, cnf.EnvID)
-	return err
+	if err != nil {
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to upsert mailer config for env_id=%d", cnf.EnvID)
+	}
+	return nil
 }
 
 // InsertMail inserts a sent email to the database. This is mostly for auditing.
 func (s *store) InsertEmail(ctx context.Context, mail Email) error {
 	_, err := s.Exec(ctx, stmt.insertEmail, mail.EnvID, mail.To, mail.From, mail.Body, mail.Subject)
-	return err
+	if err != nil {
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to insert email for env_id=%d to=%s", mail.EnvID, mail.To)
+	}
+	return nil
 }
 
 // Emails returns the last sent 100 emails.
@@ -123,7 +130,7 @@ func (s *store) Emails(ctx context.Context, envID types.ID) ([]*Email, error) {
 			return nil, nil
 		}
 
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to query emails for env_id=%d", envID)
 	}
 
 	defer rows.Close()
@@ -138,7 +145,7 @@ func (s *store) Emails(ctx context.Context, envID types.ID) ([]*Email, error) {
 		)
 
 		if err != nil {
-			return nil, err
+			return nil, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to scan email row for env_id=%d", envID)
 		}
 
 		emails = append(emails, email)

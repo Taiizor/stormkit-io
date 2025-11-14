@@ -6,6 +6,7 @@ import (
 	"context"
 
 	"github.com/stormkit-io/stormkit-io/src/lib/database"
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/types"
 )
 
@@ -52,7 +53,10 @@ func (s *Store) ResetCacheArgs(ctx context.Context, envID types.ID) ([]ResetCach
 	}
 
 	if err != nil || rows == nil {
-		return args, err
+		if err != nil {
+			return args, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to query reset cache args for env_id=%d", envID)
+		}
+		return args, nil
 	}
 
 	defer rows.Close()
@@ -61,7 +65,7 @@ func (s *Store) ResetCacheArgs(ctx context.Context, envID types.ID) ([]ResetCach
 		arg := ResetCacheArgs{}
 
 		if err := rows.Scan(&arg.DomainName, &arg.DisplayName); err != nil {
-			return args, err
+			return args, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to scan reset cache args for env_id=%d", envID)
 		}
 
 		args = append(args, arg)

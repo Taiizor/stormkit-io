@@ -13,6 +13,7 @@ import (
 
 	"github.com/lib/pq"
 	"github.com/stormkit-io/stormkit-io/src/lib/database"
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/types"
 )
 
@@ -121,7 +122,7 @@ func (s *SStore) selectSnippet(ctx context.Context, data map[string]any, params 
 	row, err := s.QueryRow(ctx, wr.String(), params...)
 
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to query snippet")
 	}
 
 	err = row.Scan(
@@ -134,7 +135,11 @@ func (s *SStore) selectSnippet(ctx context.Context, data map[string]any, params 
 		return nil, nil
 	}
 
-	return snippet, err
+	if err != nil {
+		return nil, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to scan snippet")
+	}
+
+	return snippet, nil
 }
 
 // SnippetByID returns a snippet by it's ID.
@@ -166,7 +171,7 @@ func (s *SStore) SnippetsByEnvID(ctx context.Context, filters SnippetFilters) ([
 		jsonb, err := json.Marshal(filters.Hosts)
 
 		if err != nil {
-			return nil, err
+			return nil, errors.Wrapf(err, errors.ErrorTypeInternal, "failed to marshal hosts filter for env_id=%d", filters.EnvID)
 		}
 
 		params = append(params, string(jsonb))
@@ -192,7 +197,7 @@ func (s *SStore) SnippetsByEnvID(ctx context.Context, filters SnippetFilters) ([
 	}
 
 	if err := s.selectTmpl.Execute(&wr, data); err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeInternal, "failed to execute select snippets template for env_id=%d", filters.EnvID)
 	}
 
 	snippets := []*Snippet{}
@@ -200,7 +205,10 @@ func (s *SStore) SnippetsByEnvID(ctx context.Context, filters SnippetFilters) ([
 	rows, err := s.Query(ctx, wr.String(), params...)
 
 	if err != nil || rows == nil {
-		return nil, err
+		if err != nil {
+			return nil, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to query snippets for env_id=%d", filters.EnvID)
+		}
+		return nil, nil
 	}
 
 	defer rows.Close()
@@ -215,7 +223,7 @@ func (s *SStore) SnippetsByEnvID(ctx context.Context, filters SnippetFilters) ([
 		)
 
 		if err != nil {
-			return nil, err
+			return nil, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to scan snippet row for env_id=%d", filters.EnvID)
 		}
 
 		snippets = append(snippets, snippet)
@@ -267,13 +275,16 @@ func (s *SStore) Insert(ctx context.Context, snippets []*Snippet) error {
 		Parse(snippetsStmt.insertSnippets))
 
 	if err := query.Execute(&wr, data); err != nil {
-		return err
+		return errors.Wrapf(err, errors.ErrorTypeInternal, "failed to execute insert snippets template for %d snippets", len(snippets))
 	}
 
 	rows, err := s.Query(ctx, wr.String(), params...)
 
 	if err != nil || rows == nil {
-		return err
+		if err != nil {
+			return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to insert %d snippets", len(snippets))
+		}
+		return errors.New(errors.ErrorTypeDatabase, "no rows returned from snippet insert")
 	}
 
 	defer rows.Close()
@@ -282,13 +293,13 @@ func (s *SStore) Insert(ctx context.Context, snippets []*Snippet) error {
 
 	for rows.Next() {
 		if err := rows.Scan(&snippets[i].ID); err != nil {
-			return err
+			return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to scan snippet ID at index %d", i)
 		}
 
 		i = i + 1
 	}
 
-	return err
+	return nil
 }
 
 // Update updates the given snippet records in the database.
@@ -300,13 +311,19 @@ func (s *SStore) Update(ctx context.Context, snippet *Snippet) error {
 	}
 
 	_, err := s.Exec(ctx, snippetsStmt.updateSnippet, params...)
-	return err
+	if err != nil {
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to update snippet id=%d env_id=%d", snippet.ID, snippet.EnvID)
+	}
+	return nil
 }
 
 // Delete the provided snippets from the database.
 func (s *SStore) Delete(ctx context.Context, snippetIDs []types.ID, envID types.ID) error {
 	_, err := s.Exec(ctx, snippetsStmt.deleteSnippet, pq.Array(snippetIDs), envID)
-	return err
+	if err != nil {
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to delete %d snippets for env_id=%d", len(snippetIDs), envID)
+	}
+	return nil
 }
 
 // MissingHosts returns the list of missing hosts for the given hosts slice.
@@ -314,6 +331,9 @@ func (s *SStore) MissingHosts(ctx context.Context, hosts []string, envID types.I
 	rows, err := s.Query(ctx, snippetsStmt.missingHosts, pq.Array(hosts), envID)
 
 	if err == sql.ErrNoRows || rows == nil {
+		if err != nil && err != sql.ErrNoRows {
+			return nil, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to query missing hosts for env_id=%d", envID)
+		}
 		return nil, nil
 	}
 
@@ -325,7 +345,7 @@ func (s *SStore) MissingHosts(ctx context.Context, hosts []string, envID types.I
 		var missingHost string
 
 		if err := rows.Scan(&missingHost); err != nil {
-			return nil, err
+			return nil, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to scan missing host for env_id=%d", envID)
 		}
 
 		missingHosts = append(missingHosts, missingHost)
