@@ -315,11 +315,14 @@ func (s *Store) InsertEmails(ctx context.Context, userID types.ID, emails []oaut
 
 	if err := s.insertEmailsTmpl.Execute(&qb, data); err != nil {
 		slog.Errorf("error executing update emails query template: %v", err)
-		return err
+		return errors.Wrap(err, errors.ErrorTypeInternal, "failed to execute emails query template")
 	}
 
 	_, err := s.Exec(ctx, qb.String(), params...)
-	return err
+	if err != nil {
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to update %d emails for user_id=%d", len(emails), userID)
+	}
+	return nil
 }
 
 // InsertUser inserts a user into the database.
@@ -605,14 +608,17 @@ func (s *Store) SelectTotalUsersCloud(ctx context.Context, userID types.ID) (int
 	row, err := s.QueryRow(ctx, ustmt.selectTotalUsersCloud, userID)
 
 	if err != nil {
-		return 0, err
+		return 0, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to query total users for user_id=%d", userID)
 	}
 
 	if err = row.Scan(&count); err == sql.ErrNoRows {
 		return 0, nil
 	}
 
-	return count, err
+	if err != nil {
+		return 0, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to scan count for user_id=%d", userID)
+	}
+	return count, nil
 }
 
 // MarkUserAsDeleted marks the user, apps and deployment as deleted.
@@ -620,24 +626,24 @@ func (s *Store) MarkUserAsDeleted(context context.Context, userID types.ID) erro
 	tx, err := s.Conn.Begin()
 
 	if err != nil {
-		return err
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to begin transaction for user_id=%d", userID)
 	}
 
 	query, err := tx.Prepare(ustmt.markUserAsDeleted)
 
 	if err != nil {
-		return err
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to prepare mark user deleted statement for user_id=%d", userID)
 	}
 
 	if _, err := query.Exec(userID); err != nil {
 		_ = tx.Rollback()
-		return err
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to execute mark user deleted for user_id=%d", userID)
 	}
 
 	query, err = tx.Prepare(ustmt.markUserAppsAsDeleted)
 
 	if err != nil {
-		return err
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to prepare mark apps deleted statement for user_id=%d", userID)
 	}
 
 	var appIds []int64
@@ -647,7 +653,7 @@ func (s *Store) MarkUserAsDeleted(context context.Context, userID types.ID) erro
 
 		if err != nil {
 			_ = tx.Rollback()
-			return err
+			return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to query apps for user_id=%d", userID)
 		}
 		defer rows.Close()
 
@@ -656,7 +662,7 @@ func (s *Store) MarkUserAsDeleted(context context.Context, userID types.ID) erro
 			err := rows.Scan(&id)
 			if err != nil {
 				_ = tx.Rollback()
-				return err
+				return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to scan app ID for user_id=%d", userID)
 			}
 			appIds = append(appIds, id)
 		}
@@ -666,17 +672,20 @@ func (s *Store) MarkUserAsDeleted(context context.Context, userID types.ID) erro
 
 	if err != nil {
 		_ = tx.Rollback()
-		return err
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to prepare mark deployments deleted statement for user_id=%d", userID)
 	}
 
 	_, err = query.ExecContext(context, pq.Array(appIds))
 
 	if err != nil {
 		_ = tx.Rollback()
-		return err
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to mark %d deployments as deleted for user_id=%d", len(appIds), userID)
 	}
 
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to commit user deletion transaction for user_id=%d", userID)
+	}
+	return nil
 }
 
 func sync3rdParties(user *User) {
@@ -707,16 +716,18 @@ func (s *Store) UpdateSubscription(ctx context.Context, userID types.ID, meta Us
 	_, err := s.Exec(ctx, ustmt.updateSubscription, meta, userID)
 
 	if err != nil {
-		return err
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to update subscription for user_id=%d package=%s", userID, meta.PackageName)
 	}
 
 	// Remove license if the package is not premium or ultimate
 	if meta.PackageName != config.PackagePremium && meta.PackageName != config.PackageUltimate {
 		_, err = s.Exec(ctx, ustmt.deleteLicense, userID)
-		return err
+		if err != nil {
+			return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to delete license for user_id=%d", userID)
+		}
 	}
 
-	return err
+	return nil
 }
 
 // GenerateSelfHostedLicense will generate a license with the user's api key. If the user
@@ -732,12 +743,12 @@ func (s *Store) GenerateSelfHostedLicense(ctx context.Context, quantity int, use
 	md, err := json.Marshal(license.Metadata)
 
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeInternal, "failed to marshal license metadata for user_id=%d", userID)
 	}
 
 	// Make sure to delete the previous license
 	if _, err = s.Exec(ctx, ustmt.deleteLicense, userID); err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to delete existing license for user_id=%d", userID)
 	}
 
 	_, err = s.Exec(ctx, ustmt.insertLicense,
@@ -749,7 +760,7 @@ func (s *Store) GenerateSelfHostedLicense(ctx context.Context, quantity int, use
 	)
 
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to insert self-hosted license for user_id=%d seats=%d", userID, quantity)
 	}
 
 	return license, nil
@@ -760,17 +771,23 @@ func (s *Store) GenerateSelfHostedLicense(ctx context.Context, quantity int, use
 func (s *Store) UpdatePersonalAccessToken(uid types.ID, token string) (err error) {
 	if token == "" {
 		_, err = s.Exec(context.TODO(), ustmt.updatePersonalAccessToken, nil, uid)
-		return err
+		if err != nil {
+			return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to clear personal access token for user_id=%d", uid)
+		}
+		return nil
 	}
 
 	encrypted, err := utils.Encrypt([]byte(token))
 
 	if err != nil {
-		return err
+		return errors.Wrapf(err, errors.ErrorTypeInternal, "failed to encrypt personal access token for user_id=%d", uid)
 	}
 
 	_, err = s.Exec(context.TODO(), ustmt.updatePersonalAccessToken, encrypted, uid)
-	return err
+	if err != nil {
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to update personal access token for user_id=%d", uid)
+	}
+	return nil
 }
 
 // emailsEqual checks the equality between two oauth.Email slices.

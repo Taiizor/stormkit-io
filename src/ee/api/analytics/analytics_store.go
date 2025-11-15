@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/stormkit-io/stormkit-io/src/lib/database"
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/slog"
 	"github.com/stormkit-io/stormkit-io/src/lib/types"
 	"gopkg.in/guregu/null.v3"
@@ -350,12 +351,14 @@ func (s *Store) InsertRecords(ctx context.Context, records []Record) error {
 	err := query.Execute(&wr, data)
 
 	if err != nil {
-		return fmt.Errorf("error while compiling insertRecord template: %v", err)
+		return errors.Wrap(err, errors.ErrorTypeInternal, "failed to execute insertRecord template")
 	}
 
 	_, err = s.Exec(ctx, wr.String(), params...)
-
-	return err
+	if err != nil {
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to insert %d analytics records", len(records))
+	}
+	return nil
 }
 
 const SPAN_24h = "24h"

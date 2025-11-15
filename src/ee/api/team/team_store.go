@@ -3,10 +3,10 @@ package team
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 
 	"github.com/stormkit-io/stormkit-io/src/lib/database"
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/slog"
 	"github.com/stormkit-io/stormkit-io/src/lib/types"
 )
@@ -164,17 +164,17 @@ func NewStore() *Store {
 // CreateTeam creates a team and adds the user as an owner.
 func (s *Store) CreateTeam(ctx context.Context, team *Team, member *Member) error {
 	if member.Role != ROLE_OWNER {
-		return errors.New("member needs to be an owner to create a team")
+		return errors.New(errors.ErrorTypeValidation, "member needs to be an owner to create a team")
 	}
 
 	row, err := s.QueryRow(ctx, stmt.createTeam, team.Name, team.Slug, member.UserID, member.Role, member.Status)
 
 	if err != nil {
-		return err
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to create team name=%s user_id=%d", team.Name, member.UserID)
 	}
 
 	if err = row.Scan(&team.ID, &member.ID); err != nil {
-		return err
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to scan team and member IDs for team=%s", team.Name)
 	}
 
 	member.TeamID = team.ID
@@ -184,7 +184,10 @@ func (s *Store) CreateTeam(ctx context.Context, team *Team, member *Member) erro
 // CreateTeam creates a team and adds the user as an owner.
 func (s *Store) UpdateTeam(ctx context.Context, team *Team) error {
 	_, err := s.Exec(ctx, stmt.updateTeam, team.Name, team.Slug, team.ID)
-	return err
+	if err != nil {
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to update team_id=%d name=%s", team.ID, team.Name)
+	}
+	return nil
 }
 
 // Teams returns the teams that the user is a member of.
@@ -199,7 +202,7 @@ func (s *Store) Teams(ctx context.Context, userID types.ID) ([]Team, error) {
 
 	if err != nil {
 		slog.Errorf("error while fetching teams: %s", err.Error())
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to fetch teams for user_id=%d", userID)
 	}
 
 	defer rows.Close()
@@ -223,10 +226,13 @@ func (s *Store) AddMemberToTeam(ctx context.Context, member *Member) error {
 	row, err := s.QueryRow(ctx, stmt.addUserToTeam, member.TeamID, member.UserID, member.Role, member.Status)
 
 	if err != nil {
-		return err
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to add user_id=%d to team_id=%d", member.UserID, member.TeamID)
 	}
 
-	return row.Scan(&member.ID)
+	if err := row.Scan(&member.ID); err != nil {
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to scan member ID for user_id=%d team_id=%d", member.UserID, member.TeamID)
+	}
+	return nil
 }
 
 // Team returns the team with the given id.
@@ -236,7 +242,7 @@ func (s *Store) Team(ctx context.Context, teamID, userID types.ID) (*Team, error
 	row, err := s.QueryRow(ctx, stmt.selectTeam, teamID, userID)
 
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to query team_id=%d user_id=%d", teamID, userID)
 	}
 
 	err = row.Scan(&t.ID, &t.IsDefault, &t.Name, &t.Slug, &t.CurrentUserRole)
@@ -245,7 +251,10 @@ func (s *Store) Team(ctx context.Context, teamID, userID types.ID) (*Team, error
 		return nil, nil
 	}
 
-	return t, err
+	if err != nil {
+		return nil, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to scan team data for team_id=%d", teamID)
+	}
+	return t, nil
 }
 
 // DefaultTeam returns the default team of the user.
@@ -255,7 +264,7 @@ func (s *Store) DefaultTeam(ctx context.Context, userID types.ID) (*Team, error)
 	row, err := s.QueryRow(ctx, stmt.selectDefaultTeam, userID)
 
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to query default team for user_id=%d", userID)
 	}
 
 	err = row.Scan(&t.ID, &t.IsDefault, &t.Name, &t.Slug, &t.CurrentUserRole)
@@ -276,7 +285,10 @@ func (s *Store) DefaultTeamID(ctx context.Context, userID types.ID) (types.ID, e
 // MarkTeamAsSoftDeleted marks the given team as soft deleted.
 func (s *Store) MarkTeamAsSofDeleted(ctx context.Context, teamID types.ID) error {
 	_, err := s.Exec(ctx, stmt.markTeamAsSoftDeleted, teamID)
-	return err
+	if err != nil {
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to mark team_id=%d as soft deleted", teamID)
+	}
+	return nil
 }
 
 // IsMember checks if the user is a member of the given team.
@@ -303,7 +315,7 @@ func (s *Store) TeamMember(ctx context.Context, memberID types.ID) (*Member, err
 	row, err := s.QueryRow(ctx, stmt.selectTeamMember, memberID)
 
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to query team member_id=%d", memberID)
 	}
 
 	err = row.Scan(
@@ -359,11 +371,17 @@ func (s *Store) TeamMembers(ctx context.Context, teamID types.ID) ([]Member, err
 // RemoveTeamMember hard deletes the given member from the team.
 func (s *Store) RemoveTeamMember(ctx context.Context, teamID, memberID types.ID) error {
 	_, err := s.Exec(ctx, stmt.removeUserFromTeam, teamID, memberID, ROLE_OWNER)
-	return err
+	if err != nil {
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to remove member_id=%d from team_id=%d", memberID, teamID)
+	}
+	return nil
 }
 
 // MigrateApp migrates the given app id to the given team.
 func (s *Store) MigrateApp(ctx context.Context, appID, teamID types.ID) error {
 	_, err := s.Exec(ctx, stmt.migrateApp, teamID, appID)
-	return err
+	if err != nil {
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to migrate app_id=%d to team_id=%d", appID, teamID)
+	}
+	return nil
 }

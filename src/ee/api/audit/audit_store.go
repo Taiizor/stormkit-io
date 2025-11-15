@@ -9,6 +9,7 @@ import (
 	"text/template"
 
 	"github.com/stormkit-io/stormkit-io/src/lib/database"
+	"github.com/stormkit-io/stormkit-io/src/lib/errors"
 	"github.com/stormkit-io/stormkit-io/src/lib/types"
 	"gopkg.in/guregu/null.v3"
 )
@@ -92,7 +93,7 @@ func (s *Store) Log(ctx context.Context, audit *Audit) error {
 		diff, err = json.Marshal(audit.Diff)
 
 		if err != nil {
-			return err
+			return errors.Wrapf(err, errors.ErrorTypeInternal, "failed to marshal audit diff for action=%s", audit.Action)
 		}
 	} else {
 		diff = nil
@@ -111,10 +112,13 @@ func (s *Store) Log(ctx context.Context, audit *Audit) error {
 	)
 
 	if err != nil {
-		return err
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to insert audit log for action=%s team_id=%d", audit.Action, audit.TeamID)
 	}
 
-	return row.Scan(&audit.ID)
+	if err := row.Scan(&audit.ID); err != nil {
+		return errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to scan audit ID for action=%s", audit.Action)
+	}
+	return nil
 }
 
 type AuditFilters struct {
@@ -161,15 +165,19 @@ func (s *Store) SelectAudits(ctx context.Context, filters AuditFilters) ([]Audit
 	}
 
 	if err := s.selectTmpl.Execute(&wr, data); err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, errors.ErrorTypeInternal, "failed to execute select audits template")
 	}
 
 	audits := []Audit{}
 
 	rows, err := s.Query(ctx, wr.String(), params...)
 
-	if err != nil || rows == nil {
-		return nil, err
+	if err != nil {
+		return nil, errors.Wrapf(err, errors.ErrorTypeDatabase, "failed to query audits with filters team_id=%d app_id=%d env_id=%d", filters.TeamID, filters.AppID, filters.EnvID)
+	}
+
+	if rows == nil {
+		return nil, nil
 	}
 
 	defer rows.Close()

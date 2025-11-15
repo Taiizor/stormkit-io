@@ -227,7 +227,7 @@ func (s *store) Insert(ctx context.Context, files []*File, envID types.ID) error
 		i = i + 1
 	}
 
-	return err
+	return nil
 }
 
 // RemoveFiles removes files from the database.
